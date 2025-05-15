@@ -6,8 +6,14 @@ conda create -n HDXRank python=3.9 -y
 
 # Step 2: Activate the environment
 echo "Activating the 'HDXRank' environment..."
-source $(conda info --base)/etc/profile.d/conda.sh
-conda activate HDXRank
+CONDA_BASE=$(conda info --base)
+if [ -f "$CONDA_BASE/etc/profile.d/conda.sh" ]; then
+    source "$CONDA_BASE/etc/profile.d/conda.sh"
+    conda activate HDXRank
+else
+    echo "conda.sh not found. Make sure conda is installed and initialized."
+    exit 1
+fi
 
 # Step 3: Install PyTorch with CUDA
 #minimum version requirements: torch>=1.8.0
