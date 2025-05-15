@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Template of HDXRank pipeline setting-->
+<HDXRank>
+    <GeneralParameters>
+        <RootDir>./example/AF_Cov19_icoHu23</RootDir>
+        <EmbeddingDir>embedding_files</EmbeddingDir>
+        <PDBDir>structures/rec</PDBDir>
+        <hhmDir>hhm_files</hhmDir>
+        <HDXDir>HDX_files</HDXDir>
+        <pepGraphDir>graph_ensemble_GearNet</pepGraphDir>
+        <Mode>BatchAF</Mode><!-- BatchTable/BatchAF/BatchDock/Single -->
+        <TaskFile>None</TaskFile><!-- Required in train or docking mode, task file Root_dir/TaskFile_name.xlsx -->
+    </GeneralParameters>
+
+    <EmbeddingParameters>
+        <Switch>True</Switch>
+        <StructureList>fold_1203_wuhan_icohu104_rec</StructureList> <!-- Protein structure file name -->
+        <ProteinChains>ABC</ProteinChains>
+        <NAChains>None</NAChains>
+        <SMChains>None</SMChains>
+        <hhmToUse>/A:WUHAN_ICOHU23/B:WUHAN_ICOHU23/C:WUHAN_ICOHU23</hhmToUse> <!-- Need to specify hhm file for each chain, format: /[chainID]:[file name], no separation between chains -->
+    </EmbeddingParameters>
+
+    <TaskParameters>
+        <Switch>True</Switch>
+        <SeedNum>10</SeedNum> <!-- Seeds for AlphaFold sampling (AF mode)-->
+        <DockingModelNum>0</DockingModelNum> <!-- Number of generated docking models (docking mode)-->        
+        <DatabaseID>Wuhan_icoHu23</DatabaseID> <!-- HDX file: [database_id].xlsx -->
+        <Protein>Wuhan_cov19</Protein> <!-- Protein label in HDX file -->
+        <State>complex</State> <!-- State label in HDX file -->
+        <ChainToConstruct>ABC</ChainToConstruct> <!-- Protein chains to construct graph -->
+        <Correction>0,0,0</Correction> <!-- Correction values for HDX and PDB residue indices -->
+        <ComplexState>protein complex</ComplexState><!-- single or protein complex -->
+        <EmbeddingToUse>fold_1203_wuhan_icohu104</EmbeddingToUse> <!-- Embedding file base name to construct graph -->
+    </TaskParameters>
+
+    <GraphParameters>
+        <RadiusMax>8.0</RadiusMax> <!-- Maximum distance for radius edge construction -->
+        <SeqMin>3</SeqMin> <!-- Minimum sequence separation for radius and knn edges -->
+        <GraphType>GearNet</GraphType>
+        <EmbeddingType>manual</EmbeddingType>
+        <MaxLen>30</MaxLen>
+        <PepRange>None</PepRange> <!-- indicate the residue id range considered when constructing peptide graphs, format:"a-b,c-d,..." or None-->
+    </GraphParameters>
+
+    <PredictionParameters>
+        <Switch>True</Switch>
+        <ModelDir>../../Model</ModelDir> <!-- Path to the HDXRank model directory -->
+        <PredDir>predictions</PredDir>
+        <ModelList>HDXRank_GN56_cls1_epoch100_v0,HDXRank_GN56_cls1_epoch100_v1,HDXRank_GN56_cls1_epoch100_v2,HDXRank_GN56_cls1_epoch100_v3,HDXRank_GN56_cls1_epoch100_v4</ModelList>
+        <CudaID>0</CudaID>
+        <BatchSize>64</BatchSize>
+    </PredictionParameters>
+</HDXRank>

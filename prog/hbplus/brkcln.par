@@ -1,0 +1,148 @@
+c===============================================================================
+c     brkcln.inc
+c===============================================================================
+c     implicit none
+c     implicit complex (a-z)
+c
+      integer aaonln, abetsz, ahsz,   allatm, allcrd, alphah, altfi,
+     +        altmax, authfi, bdgsep, bend,   blgszl, blgszs, bridge,
+     +        bridg1, bridg2, brkfi,  calph,  carb,   cbeta,  chiral,
+     +        chisgn, chnfi,  cst,    cyscod, dihdat, errfi,  fnamln,
+     +        impld,  kappa,  keylen, logfi,  maxalt, maxbnd, maxchi, 
+     +        maxchn, maxlin, maxres, mnchna, mprcod, namfi,  ncoord, 
+     +        ndihed, nhelix, nhyd,   nmain,  nmnang, nmod,   nsdang, 
+     +        nst,    nstchs, nstruc, nturns, omega,  ooi1,   ooi2,   
+     +        outfi,  oxyg,   phi,    pih,    pihsz,  procod, protfi, 
+     +        psi,    sdchna, seccod, sgamma, sheet,  sheet1, sideaa, 
+     +        stdaa,  tco,    thrtnh, thrtsz, turn,   unkcod
+c
+      real    cadbnd, ccdst,  null,   ooi1rd, ooi2rd, pepbnd, radian,
+     +        sssep
+c
+      character atmkey*6, bendch*1, bndbeg*1, bndbth*1, bndend*1, 
+     +          brkch*1,  bulgch*1, calpha*4, cmpkey*6, dsfkey*6,
+     +          endkey*6, fmlkey*6, hedkey*6, hetkey*6, hlxkey*6,
+     +          htakey*6, maskey*6, modkey*6, nonatm*4, pbch*1,
+     +          seqkey*6, shtkey*6, shtsma*1, shtsym*1, sitkey*6,
+     +          soukey*6, space*1,  terkey*6, trnch*1,  trnkey*6
+c
+      Parameter ( aaonln =    100 )
+      Parameter ( abetsz =     29 )
+      Parameter ( ahsz   =      4 )
+      Parameter ( alphah =      1 )
+      Parameter ( altfi  =     15 )
+      Parameter ( altmax =    300 )
+      Parameter ( authfi =     14 )
+      Parameter ( bdgsep =      2 )
+      Parameter ( bend   =     10 )
+      Parameter ( blgszl =      5 )
+      Parameter ( blgszs =      2 )
+      Parameter ( bridge =      4 )
+      Parameter ( bridg1 =      5 )
+      Parameter ( bridg2 =      6 )
+      Parameter ( brkfi  =     11 )
+      Parameter ( calph  =      2 )
+      Parameter ( carb   =      3 )
+      Parameter ( cbeta  =      1 )
+      Parameter ( chiral =      4 )
+      Parameter ( chisgn =     11 )
+      Parameter ( chnfi  =      9 )
+      Parameter ( cst    =      1 )
+      Parameter ( cyscod =      3 )
+      Parameter ( dihdat =      6 )
+      Parameter ( errfi  =     12 )
+      Parameter ( fnamln =     80 )
+      Parameter ( impld  =      1 )
+      Parameter ( kappa  =      5 )
+      Parameter ( keylen =      6 )
+      Parameter ( logfi  =     18 )
+      Parameter ( maxalt =    600 )
+      Parameter ( maxbnd =      4 )
+      Parameter ( maxchi =      6 )
+      Parameter ( maxchn =     50 )
+      Parameter ( maxlin =   8500 )
+      Parameter ( maxres =   5700 )
+      Parameter ( mnchna =      6 )
+      Parameter ( mprcod =     34 )
+      Parameter ( namfi  =     10 )
+      Parameter ( ncoord =      3 )
+      Parameter ( ndihed =      5 )
+      Parameter ( nhelix =      3 )
+      Parameter ( nhyd   =      5 )
+      Parameter ( nmain  =      1 )
+      Parameter ( nmnang =      7 )
+      Parameter ( nmod   =     14 )
+      Parameter ( nsdang =      6 )
+      Parameter ( nst    =      3 )
+      Parameter ( nstchs =     26 )
+      Parameter ( nstruc =     11 )
+      Parameter ( nturns =      3 )
+      Parameter ( omega  =      3 )
+      Parameter ( ooi1   =      1 )
+      Parameter ( ooi2   =      2 )
+      Parameter ( outfi  =     13 )
+      Parameter ( oxyg   =      4 )
+      Parameter ( phi    =      1 )
+      Parameter ( pih    =      8 )
+      Parameter ( pihsz  =      5 )
+      Parameter ( procod =     16 )
+      Parameter ( protfi =      8 )
+      Parameter ( psi    =      2 )
+      Parameter ( sdchna =     12 )
+      Parameter ( seccod =     32 )
+      Parameter ( sgamma =      2 )
+      Parameter ( sheet  =      3 )
+      Parameter ( sheet1 =      2 )
+      Parameter ( sideaa =     50 )
+      Parameter ( stdaa  =     26 )
+      Parameter ( tco    =      6 )
+      Parameter ( thrtnh =      7 )
+      Parameter ( thrtsz =      3 )
+      Parameter ( turn   =      9 )
+      Parameter ( unkcod =     -1 )
+c
+      Parameter ( allatm = maxres*mnchna )
+      Parameter ( allcrd = maxres*mnchna*ncoord )
+c
+      Parameter ( cadbnd =   5.0 )
+      Parameter ( ccdst  =   2.0 )
+      Parameter ( null   = 999.9 )
+      Parameter ( ooi1rd =   8.0 )
+      Parameter ( ooi2rd =  14.0 )
+      Parameter ( pepbnd =   2.5 )
+      Parameter ( radian = (180.0 / 3.14159265) )
+      Parameter ( sssep  =   3.0 )
+c
+      Parameter ( atmkey = 'ATOM  ' )
+      Parameter ( bendch = 'S' )
+      Parameter ( bndbeg = '>' )
+      Parameter ( bndbth = 'X' )
+      Parameter ( bndend = '<' )
+      Parameter ( brkch  = '!' )
+      Parameter ( bulgch = '*' )
+      Parameter ( calpha = ' CA ' )
+      Parameter ( cmpkey = 'COMPND' )
+      Parameter ( dsfkey = 'SSBOND' )
+      Parameter ( endkey = 'END   ' )
+      Parameter ( fmlkey = 'FORMUL' )
+      Parameter ( hedkey = 'HEADER' )
+      Parameter ( hetkey = 'HET   ' )
+      Parameter ( hlxkey = 'HELIX ' )
+      Parameter ( htakey = 'HETATM' )
+      Parameter ( maskey = 'MASTER' )
+      Parameter ( modkey = 'MODEL ' )
+      Parameter ( nonatm = 'ZZZZ' )
+      Parameter ( pbch   = 'b' )
+      Parameter ( seqkey = 'SEQRES' )
+      Parameter ( shtkey = 'SHEET ' )
+      Parameter ( shtsma = 'e' )
+      Parameter ( shtsym = 'E' )
+      Parameter ( sitkey = 'SITE  ' )
+      Parameter ( soukey = 'SOURCE' )
+      Parameter ( space  = ' ' )
+      Parameter ( terkey = 'TER   ' )
+      Parameter ( trnch  = 'T' )
+      Parameter ( trnkey = 'TURN  ' )
+c
+c     End of file.
+c===============================================================================
