@@ -117,6 +117,8 @@ python HDXRank_train.py -input ./settings/BatchTable_setting.xml -save ./models
 
 ## Citing HDXRank
 If you utilize HDXRank in your research, please cite the following publication:
+
+```bibtex
 @article{Wang2025HDXRank,
   author    = {Liyao Wang, Andrejs Tucš, Songting Ding, Koji Tsuda and Adnan Sljoka},
   title     = {HDXRank: A Deep Learning Framework for Ranking Protein Complex Predictions With Hydrogen–Deuterium Exchange Data},
