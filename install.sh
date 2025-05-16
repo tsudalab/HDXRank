@@ -2,6 +2,7 @@
 
 # Step 1: Create a new Conda environment with Python 3.9
 echo "Creating a new Conda environment named 'HDXRank' with Python 3.9..."
+conda update -n base -c conda-forge conda
 conda create -n HDXRank python=3.9 -y
 
 # Step 2: Activate the environment
@@ -18,15 +19,17 @@ fi
 # Step 3: Install PyTorch with CUDA
 #minimum version requirements: torch>=1.8.0
 echo "Installing PyTorch with CUDA..."
-conda install pytorch==2.0.0 torchvision==0.15.0 torchaudio==2.0.0 pytorch-cuda=11.8 -c pytorch -c nvidia -y
+pip install torch==2.0.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 
 # Step 4: Install TorchDrug
 echo "Installing TorchDrug..."
-conda install torchdrug -c milagraph -c conda-forge -c pytorch -c pyg -y
+pip install numpy==1.26
+pip install torch-scatter torch-cluster -f https://data.pyg.org/whl/torch-2.0.0+cu118.html
+pip install torchdrug
 
 # Step 5: Install scikit-learn, scipy, and biotite
 echo "Installing scikit-learn, scipy, and biotite..."
-conda install scikit-learn scipy biotite -c conda-forge -y
+pip install scikit-learn biotite
 
 # Step 6: Install additional packages with pip
 echo "Installing Biopython, Openpyxl, and pdb2sql using pip..."
