@@ -92,7 +92,7 @@ This will run the HDX prediction and ranking pipeline based on the specified `.x
 ### Execution:
 Once all required input files are prepared, you can launch the HDXRank pipeline using the following command:
 ```bash
-python main.py -input input.xml
+python main.py -input [input.xml]
 ```
 By default, the RFU prediction results will be saved to the `output/` directory (can be modified in `.xml` file).
 
