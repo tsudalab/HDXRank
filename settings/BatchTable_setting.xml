@@ -13,7 +13,7 @@
     </GeneralParameters>
 
     <EmbeddingParameters>
-        <Switch>False</Switch>
+        <Switch>True</Switch>
         <StructureList>None</StructureList> <!-- Protein structure file name -->
         <ProteinChains>None</ProteinChains>
         <NAChains>None</NAChains>
@@ -22,7 +22,7 @@
     </EmbeddingParameters>
 
     <TaskParameters>
-        <Switch>False</Switch>
+        <Switch>True</Switch>
         <SeedNum>0</SeedNum> <!-- Seeds for AlphaFold sampling (AF mode)-->
         <DockingModelNum>0</DockingModelNum> <!-- Number of generated docking models (docking mode)-->        
         <DatabaseID>None</DatabaseID> <!-- HDX file: [database_id].xlsx -->
@@ -45,9 +45,9 @@
 
     <PredictionParameters>
         <Switch>True</Switch>
-        <ModelDir>../Model</ModelDir> <!-- Path to the HDXRank model directory -->
+        <ModelDir>../models</ModelDir> <!-- Path to the HDXRank model directory -->
         <PredDir>../output</PredDir>
-        <ModelList>HDXRank_GN56_cls1_epoch100_v0,HDXRank_GN56_cls1_epoch100_v1,HDXRank_GN56_cls1_epoch100_v2,HDXRank_GN56_cls1_epoch100_v3,HDXRank_GN56_cls1_epoch100_v4</ModelList>
+        <ModelList>HDXRank_GN56_v0,HDXRank_GN56_v1,HDXRank_GN56_v2,HDXRank_GN56_v3,HDXRank_GN56_v4</ModelList>
         <CudaID>0</CudaID>
         <BatchSize>64</BatchSize>
     </PredictionParameters>

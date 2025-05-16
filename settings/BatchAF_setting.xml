@@ -45,9 +45,9 @@
 
     <PredictionParameters>
         <Switch>True</Switch>
-        <ModelDir>../../Model</ModelDir> <!-- Path to the HDXRank model directory -->
-        <PredDir>predictions</PredDir>
-        <ModelList>HDXRank_GN56_cls1_epoch100_v0,HDXRank_GN56_cls1_epoch100_v1,HDXRank_GN56_cls1_epoch100_v2,HDXRank_GN56_cls1_epoch100_v3,HDXRank_GN56_cls1_epoch100_v4</ModelList>
+        <ModelDir>../models</ModelDir> <!-- Path to the HDXRank model directory -->
+        <PredDir>../output</PredDir>
+        <ModelList>HDXRank_GN56_v0,HDXRank_GN56_v1,HDXRank_GN56_v2,HDXRank_GN56_v3,HDXRank_GN56_v4</ModelList>
         <CudaID>0</CudaID>
         <BatchSize>64</BatchSize>
     </PredictionParameters>
