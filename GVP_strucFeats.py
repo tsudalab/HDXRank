@@ -4,7 +4,7 @@ Codes adopted from GVP structural features (https://github.com/drorlab/gvp/blob/
 """
 import numpy as np
 import torch, math
-#import torch.utils.data as data
+import torch.utils.data as data
 import torch.nn.functional as F
 import torch_cluster
 
