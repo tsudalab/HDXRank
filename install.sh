@@ -27,8 +27,8 @@ pip install numpy==1.26
 pip install torch-scatter torch-cluster -f https://data.pyg.org/whl/torch-2.0.0+cu118.html
 pip install torchdrug
 
-# Step 5: Install scikit-learn, scipy, and biotite
-echo "Installing scikit-learn, scipy, and biotite..."
+# Step 5: Install scikit-learn and biotite
+echo "Installing scikit-learn, and biotite..."
 pip install scikit-learn biotite
 
 # Step 6: Install additional packages with pip
