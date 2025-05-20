@@ -13,22 +13,24 @@ This program is designed to run in a Python environment compatible with CUDA 11.
 git clone https://github.com/SuperChrisW/HDXRank.git
 cd HDXRank
 ```
-2. (Optional) Use Docker for Reproducibility:
+2. (Recommended) Build docker image:
+Make sure [Docker](https://docs.docker.com/get-docker/) is installed and the Docker daemon is running.
+```bash
+docker pull superchrisw/hdxrank:py310_torch200_cu118
+docker run -it --rm -v $(pwd):/job/code superchrisw/hdxrank:py310_torch200_cu118 /bin/bash
+cd /job/code
+python main.py --help
 ```
-# Pull a CUDA-compatible image
-docker pull pytorch/pytorch:2.0.0-cuda11.7-cudnn8-runtime
+This should print the command-line help for the main program, confirming that all dependencies are correctly installed.
 
-# Launch the container with the current directory mounted
-docker run -it --rm -v $(pwd):/workspace -w /workspace pytorch/pytorch:2.0.0-cuda11.7-cudnn8-runtime /bin/bash
-```
-3. Install Dependencies:
+3. (Optional) Run with conda environment:
+If you prefer not to use Docker:
 ```bash
 chmod +x ./install.sh
 ./install.sh
 conda activate HDXRank
 python main.py --help
 ```
-This should print the command-line help for the main program, confirming that all dependencies are correctly installed.
 
 ## Preparation
 * HDXRank requires multiple sequence alignments in `.hhm` format, which are generated using HHblits. Follow the steps below to install HHblits, download the UniRef30 database, and run the alignment.
