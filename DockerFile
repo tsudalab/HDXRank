@@ -22,14 +22,12 @@ RUN /job/conda/bin/conda install -p $CONDA_DIR -c pytorch -c nvidia \
         pytorch==2.0.0 torchvision==0.15.0 torchaudio==2.0.0 pytorch-cuda=11.8 -y && \
     /job/conda/bin/conda clean -afy
 
-RUN $CONDA_DIR/bin/pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple && \
-    $CONDA_DIR/bin/pip install torch-scatter torch-cluster -f https://data.pyg.org/whl/torch-2.0.0+cu118.html && \
-    $CONDA_DIR/bin/pip install --resume-retries 10 torchdrug && \
+RUN $CONDA_DIR/bin/pip install torch-scatter torch-cluster -f https://data.pyg.org/whl/torch-2.0.0+cu118.html && \
+    $CONDA_DIR/bin/pip install --resume-retries 3 torchdrug && \
     $CONDA_DIR/bin/pip install scikit-learn biotite && \
     $CONDA_DIR/bin/pip install biopython==1.83 openpyxl pdb2sql && \
     rm -rf /root/.cache/pip
 
-# Set default shell to bash with conda pre-activated
 SHELL ["/bin/bash", "-c"]
 ENV KMP_AFFINITY=disabled
 
