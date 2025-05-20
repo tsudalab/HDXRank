@@ -5,7 +5,7 @@
 <img src="figures/HDXRank_overview.jpg" style="width:100%;">
 Integrating sparse experimental data into protein complex modeling workflows can significantly improve the accuracy and reliability of predicted models. Despite the valuable insights that hydrogen-deuterium exchange (HDX) data provide about protein binding interfaces, there is currently no standard protocol for incorporating this information into the complex model selection process. Inspired by advances in graph-based deep learning for protein representation, we utilize it as a backbone for a flexible scoring framework in protein-protein complex model ranking based on their alignment with experimental HDX profiles. It offers a robust, HDX-informed selection protocol with improved prediction accuracy.
 
-## Installation:
+## Installation
 This program is designed to run in a Python environment compatible with CUDA 11.8. For reproducibility and ease of setup, we recommend using a Docker container to simulate the original environment. Alternatively, the required dependencies can be installed directly via Conda.
 
 1. Clone the repository:
@@ -13,7 +13,7 @@ This program is designed to run in a Python environment compatible with CUDA 11.
 git clone https://github.com/SuperChrisW/HDXRank.git
 cd HDXRank
 ```
-2. (Recommended) Build docker image:
+2. (Recommended) Run with Docker container:
 Make sure [Docker](https://docs.docker.com/get-docker/) is installed and the Docker daemon is running.
 ```bash
 docker pull superchrisw/hdxrank:py310_torch200_cu118
@@ -101,7 +101,7 @@ By default, the RFU prediction results will be saved to the `output/` directory 
 ### Post-processing:
 After the prediction step completes, run the post-processing scripts located in the `scripts/` directory to compute HDXRank scores for docking models or AlphaFold predictions.
 
-## Merge data and Retrain the model:
+## Merge data and Retrain the model
 HDXRank model was trained upon a curated HDX-MS dataset collected from public database PRIDE and MassIVE, up to March 2024. New HDX-MS data can be merged with the current dataset and used to re-train our model.
 
 To merge the newly collected data to dataset:
