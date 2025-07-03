@@ -16,9 +16,8 @@ import pandas as pd
 import numpy as np
 from GearNet_revise import GearNet
 
-from scipy.stats import spearmanr
-from sklearn.metrics import mean_squared_error
-from math import sqrt
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 def test_model(model, test_loader, device):
     y_pred = []
@@ -42,10 +41,10 @@ def test_model(model, test_loader, device):
     except Exception as e:
         logging.error(e)
         return None, None, None, None
-    
+
     return y_true, y_pred, range_list, chain_list
 
-def load_data_XML(pepGraph_dir, keys, batch_size=64):
+def load_data(pepGraph_dir, keys, batch_size=64):
     graph_list = [graph.strip().split('.')[0].upper() for graph in keys[3]]
     batch_list = []
     input_data = []
@@ -76,26 +75,21 @@ def HDXRank_prediction(tasks, keys):
         logging.info('model loaded successfully!')
 
         # load data
-        Pred_dataloader, batch_list = load_data_XML(pepGraph_dir, keys, batch_size=tasks["PredictionParameters"]["BatchSize"])
+        Pred_dataloader, batch_list = load_data(pepGraph_dir, keys, batch_size=tasks["PredictionParameters"]["BatchSize"])
 
         # prediction
         y_true_list, y_pred_list, range_list, chain_list = test_model(model, Pred_dataloader, device)
-
-        print(range_list)
         range_list = np.array(range_list).reshape(-1, 2)
         chain_list = np.array(chain_list)
         x_strings = np.array([f'{int(start)}-{int(end)}' for i, (start, end) in enumerate(range_list)])
         y_true_list = np.array(y_true_list)
         y_pred_list = np.array(y_pred_list)
 
-        middle_pred = y_pred_list[:,1]
-        rho = spearmanr(y_true_list, middle_pred)[0]
-        rmse = sqrt(mean_squared_error(y_true_list, middle_pred))
-        logging.info(f'rho: {rho:.3f}, RMSE: {rmse:.3f}')
-
         data = {
         'Batch': batch_list,
-        'Y_True': y_true_list,
+        'Y_True_short': y_true_list[:,0],
+        'Y_True_middle': y_true_list[:,1],
+        'Y_True_long': y_true_list[:,2],
         'Y_Pred_short': y_pred_list[:,0],
         'Y_Pred_middle': y_pred_list[:,1],
         'Y_Pred_long': y_pred_list[:,2],
@@ -106,9 +100,9 @@ def HDXRank_prediction(tasks, keys):
         model_name = os.path.basename(model_path).split('.')[0]
         model_name = "HDXRank"+os.path.basename(model_path).split('.')[0][-3:]
         pepG_folder = os.path.basename(pepGraph_dir)
-        output_file = f'prediction_rec_{pepG_folder}_{model_name}'
+        output_file = f'prediction_{pepG_folder}_{model_name}.csv'
         results_df = pd.DataFrame(data)
-        results_csv_path = os.path.join(tasks["GeneralParameters"]["RootDir"], tasks["PredictionParameters"]["PredDir"], output_file)
+        results_csv_path = os.path.join(tasks["PredictionParameters"]["PredDir"], output_file)
         os.makedirs(os.path.dirname(results_csv_path), exist_ok=True)
         results_df.to_csv(results_csv_path, index=False)
         logging.info(f'results saved to csv: {results_csv_path}')

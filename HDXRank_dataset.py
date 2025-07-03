@@ -10,13 +10,12 @@ import os
 import numpy as np
 import pandas as pd
 import networkx as nx
-from HDXRank_utilis import load_embedding
+from HDXRank_utils import load_embedding
 
 import torch
 from torch.utils.data import Dataset
 from torch_cluster import knn_graph, radius_graph
 from torchdrug import data
-
 #from torch_geometric.data import HeteroData
 #from GVP_dataset import modified_GVPdataset
 
@@ -29,6 +28,8 @@ from sklearn.preprocessing import MinMaxScaler
 min_max_scaler = MinMaxScaler()
 
 import logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 class atoms(object):
     _registry = {}
@@ -117,7 +118,7 @@ def parse_PDB(PDB_path, protein_chains=['A'], atom_type_list=['N','CA','C', 'O']
                 bfactor = float(line[60:66].strip())
                 
                 if chain_id not in protein_chains:
-                    #print(f"Skipping chain {chain_id}")
+                    logger.debug(f"Skipping chain {chain_id}")
                     continue 
                 
                 chain_info = chain_data[chain_id]
@@ -199,6 +200,7 @@ def read_HDX_table(HDX_df, proteins, states, chains, correction, protein_chains)
         temp_HDX_df = HDX_df[(HDX_df['state']==state) & (HDX_df['protein']==protein)]
         temp_HDX_df = temp_HDX_df.sort_values(by=['start', 'end'], ascending=[True, True])
         chain_index = protein_chains.index(chain)
+        logger.debug(f"HDX table after filtering by protein and state: {temp_HDX_df.shape}")
 
         clusters = [temp_HDX_df[temp_HDX_df['log_t'] < timepoints[0]],
                     temp_HDX_df[(temp_HDX_df['log_t'] >= timepoints[0]) & (temp_HDX_df['log_t'] < timepoints[1])],
@@ -218,7 +220,12 @@ def read_HDX_table(HDX_df, proteins, states, chains, correction, protein_chains)
                     mean_rfu[i] = cluster_group['RFU'].mean()/100
                 else:
                     continue
-            if any(x == -1 for x in mean_rfu):
+
+            # to train the model, all three mean_rfu should be non-negative
+            # for prediction, at least one mean_rfu should be non-negative
+
+            if all(x == -1 for x in mean_rfu):
+                logger.debug(f"mean_rfu is -1 for {protein} {state} {chain} {name}")
                 continue
             ### end
 
@@ -326,7 +333,7 @@ def add_edges(G, edge_types, coord = None, max_distance=8.0, min_seq_sep=3):
         for u, v in edge_list:
             if u < v:
                 G.add_edge(u, v, edge_type='radius_edge')
-        #print('add radius edges:', G.number_of_edges())
+        logger.debug(f"add radius edges: {G.number_of_edges()}")
 
     # add knn edges
     if 'knn_edge' in edge_types:
@@ -335,7 +342,7 @@ def add_edges(G, edge_types, coord = None, max_distance=8.0, min_seq_sep=3):
         for u, v in edge_list:
             if u < v:
                 G.add_edge(u, v, edge_type='knn_edge')
-        #print('add knn edges:', G.number_of_edges())
+        logger.debug(f"add knn edges: {G.number_of_edges()}")
 
     # remove edges with sequential distance smaller than min_seq_sep
     if 'remove_edge' in edge_types:
@@ -346,7 +353,7 @@ def add_edges(G, edge_types, coord = None, max_distance=8.0, min_seq_sep=3):
                 if (u,v) not in edges_to_remove:
                     edges_to_remove.append((u, v))
         G.remove_edges_from(edges_to_remove)
-        #print('after removing edges:', G.number_of_edges())
+        logger.debug(f"after removing edges: {G.number_of_edges()}")
 
     # add sequential edges
     if 'sequential_edge' in edge_types:
@@ -363,7 +370,7 @@ def add_edges(G, edge_types, coord = None, max_distance=8.0, min_seq_sep=3):
             if (chain,res_id-2) in i2res_id.keys():
                 G.add_edge(node, node-2, edge_type='backward_2_edge')  
             G.add_edge(node, node, edge_type='self_edge')
-        #print('add sequential edges:', G.number_of_edges())
+        logger.debug(f"add sequential edges: {G.number_of_edges()}")
 
     logging.info(G)
     return G
@@ -568,7 +575,6 @@ def split_graph(G, max_len = 30, complex_state_id = 0, graph_type = 'GearNet', p
     logging.info(f'Done.')
     return graph_ensemble
 
-# used for GVP data processing
 '''
 def networkx_to_HeteroG(subG): # convert to pytorch geometric HeteroData
     data = HeteroData()
@@ -602,7 +608,30 @@ def networkx_to_HeteroG(subG): # convert to pytorch geometric HeteroData
     if 'is_complex' in subG.graph:
         data['residue'].is_complex = torch.as_tensor([subG.graph['is_complex']], dtype=torch.int64)
     return data
+'''
+def seq_embedding(G, max_len=30, complex_state_id = 0):
+    embedding_ensemble = []
+    for peptide in pep._registry:
+        chain = peptide.chain
+        node_ids = [node for node in G.nodes() if G.nodes[node]['chain_id'] == chain]
 
+        seq_embedding = [G.nodes[node]['x'] for node in node_ids]
+        seq_embedding = torch.stack(seq_embedding, dim=0)
+        pad_needed = max_len - len(node_ids)
+        seq_embedding = torch.nn.functional.pad(seq_embedding, (0, 0, 0, pad_needed), 'constant', 0)
+
+        data = {
+            'y': peptide.hdx_value,
+            'range': (peptide.start, peptide.end),
+            'chain': peptide.chain,
+            'is_complex': complex_state_id,
+            'x': seq_embedding
+        }
+        embedding_ensemble.append(data)
+    return embedding_ensemble
+
+# block of code for GVP
+'''
 def split_PyG_graph(G, complex_state_id = 0):
     i2res_id = {(data['chain_id'], data['residue_id']): node for node, data in G.nodes(data=True)}
     graph_ensemble = []

@@ -3,39 +3,42 @@
 Author: WANG Liyao
 Paper: HDXRank: A Deep Learning Framework for Ranking Protein complex predictions with Hydrogen Deuterium Exchange Data
 Note: 
-Take the HHBlits output hhm format, PDB structure as input to encode peptide sequence and structure information into embedding.
-The Heteroatoms (NA and SM) encoding are also supported and merged with protein sequence,
-but it is not used in the current HDXRank model.
+Generates feature embeddings from HMM profiles and PDB structures.
+The Heteroatoms (NA and SM) encoding are also supported but are currently deprecated
+and not used in the HDXRank model.
 """
 import os
 import torch
 import torch.nn.functional as F
 import numpy as np
 import pandas as pd
-from Bio import PDB
+import argparse
 from Bio.PDB import NeighborSearch, Selection
 import warnings
 from BioWrappers import get_bio_model
-from HDXRank_utilis import load_protein, load_nucleic_acid, load_sm, RawInputData, parse_task
+from HDXRank_utils import load_protein, load_nucleic_acid, load_sm, RawInputData, parse_task
 
 # Logging setup
 import logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
+
 
 def find_contact_res(HETATM_input, res_list, cutoff):
     """
-    Find the contact residues of the heteroatoms (NA or SM).
+    Finds the contact residues for heteroatoms (NA or SM) within a given cutoff.
 
     Args:
-        HETATM_input: Input data for heteroatoms.
-        res_list: List of residues.
-        cutoff: Distance cutoff for identifying contacts.
+        HETATM_input (RawInputData): Input data for heteroatoms.
+        res_list (list): A list of Biopython residue objects.
+        cutoff (float): The distance cutoff in Angstroms for identifying contacts.
 
     Returns:
-        np.ndarray: Contact matrix.
+        np.ndarray: A contact matrix indicating which residues are near which heteroatoms.
     """
     entity_index_map = {tuple(entity['coord']): entity['token_type'] for entity in HETATM_input.seq_data.values()}
     res_index_map = {res: index for index, res in enumerate(res_list)}
-    contact_mtx = np.full((len(res_list), len(entity_index_map.keys())), 20)  # 20 for 'UNK' unknown type
+    contact_mtx = np.full((len(res_list), len(entity_index_map.keys())), 20)  # 20 is 'UNK' type
 
     atom_list = Selection.unfold_entities(res_list, 'A')
     ns = NeighborSearch(atom_list)
@@ -48,13 +51,13 @@ def find_contact_res(HETATM_input, res_list, cutoff):
 
 def merge_inputs(inputs_list):
     """
-    Merge input data from different chains.
+    Merges a list of RawInputData objects into a single object.
 
     Args:
-        inputs_list (list): List of RawInputData objects.
+        inputs_list (list): A list of RawInputData objects, typically for different chains.
 
     Returns:
-        RawInputData: Merged input data.
+        RawInputData: A single, merged RawInputData object.
     """
     if not inputs_list:
         return RawInputData()
@@ -66,32 +69,32 @@ def merge_inputs(inputs_list):
             running_input = running_input.merge(inputs_list[i])
         return running_input
 
-def embed_protein(structure_dir, hhm_dir, save_dir, pdb_fname, protein_chain_hhms, NA_chain=[], SM_chain=[]):
+def embed_protein(structure_dir, hhm_dir, save_dir, pdb_fname, protein_chain_hhms, NA_chain=None, SM_chain=None):
     """
-    Embed protein sequence and structure into feature matrices.
+    Embeds a single protein's sequence and structure into feature matrices.
 
     Args:
         structure_dir (str): Directory containing PDB structures.
         hhm_dir (str): Directory containing HMM files.
-        save_dir (str): Directory to save embeddings.
-        pdb_fname (str): Name of the PDB file.
-        protein_chain_hhms (dict): Mapping of chain IDs to HMM files.
-        NA_chain (list): Nucleic acid chains.
-        SM_chain (list): Small molecule chains.
-
-    Returns:
-        None
+        save_dir (str): Directory where embeddings will be saved.
+        pdb_fname (str): Filename of the PDB structure (without extension).
+        protein_chain_hhms (dict): Maps protein chain IDs to their corresponding HMM file identifiers.
+        NA_chain (list, optional): List of chain IDs corresponding to nucleic acids. Defaults to [].
+        SM_chain (list, optional): List of chain IDs corresponding to small molecules. Defaults to [].
     """
-    logging.info(f'Processing: {pdb_fname}')
+    if NA_chain is None: NA_chain = []
+    if SM_chain is None: SM_chain = []
+    
+    logger.info(f'Processing: {pdb_fname}')
 
     save_file = os.path.join(save_dir, f'{pdb_fname}.pt')
     if os.path.isfile(save_file):
-        logging.info(f'File already exists: {pdb_fname}')
+        logger.info(f'Embedding file already exists, skipping: {save_file}')
         return
 
     pdb_file = os.path.join(structure_dir, f'{pdb_fname}.pdb')
     if not os.path.isfile(pdb_file):
-        logging.warning(f'File does not exist: {pdb_file}')
+        logger.warning(f'PDB file not found, skipping: {pdb_file}')
         return
 
     structure = get_bio_model(pdb_file)
@@ -106,22 +109,23 @@ def embed_protein(structure_dir, hhm_dir, save_dir, pdb_fname, protein_chain_hhm
             if os.path.isfile(hhm_file):
                 protein_inputs.append(load_protein(hhm_file, pdb_file, chain_id))
             else:
-                logging.error(f'Missing HMM for chain {chain_id}: {hhm_file}')
+                logger.error(f'Missing HMM for chain {chain_id}: {hhm_file}')
         elif chain_id in NA_chain:
             NA_inputs.append(load_nucleic_acid(pdb_file, chain_id))
         elif chain_id in SM_chain:
             SM_inputs.append(load_sm(pdb_file, chain_id))
 
-    if len(protein_inputs) >0:
-        embedding = [protein.construct_embedding() for protein in protein_inputs]
-        embed_mtx = torch.cat(embedding, dim=0)
+    if not protein_inputs:
+        logger.warning(f"No valid protein chains found or loaded for {pdb_fname}. Cannot generate embedding.")
+        return
 
-        chain_list = [chain for chain in structure.get_chains() if chain.id in protein_chain_hhms]
-        res_list = Selection.unfold_entities(chain_list, 'R')
-    else:
-        return False
+    embedding = [protein.construct_embedding() for protein in protein_inputs]
+    embed_mtx = torch.cat(embedding, dim=0)
 
-    ### block the following code as the Heteroatom encoding is not used in the current HDXRank model ###
+    chain_list = [chain for chain in structure.get_chains() if chain.id in protein_chain_hhms]
+    res_list = Selection.unfold_entities(chain_list, 'R')
+
+    ### DEPRECATED: The following code for Heteroatom encoding is not used in the current HDXRank model. ###
     '''
     res_idx_list = []
     for res in res_list:
@@ -163,16 +167,14 @@ def embed_protein(structure_dir, hhm_dir, save_dir, pdb_fname, protein_chain_hhm
         'embedding': embed_mtx
     }
     torch.save(data_to_save, save_file)
+    logger.info(f"Successfully saved embedding to {save_file}")
 
 def BatchTable_embedding(tasks):
     """
-    Generate embeddings for a set of proteins according to xlsx table.
+    Generates embeddings for a batch of proteins defined in an Excel task file.
 
     Args:
-        tasks (dict): Parsed XML task dictionary.
-
-    Returns:
-        None
+        tasks (dict): The main configuration dictionary loaded from YAML.
     """
     warnings.filterwarnings("ignore")
 
@@ -180,15 +182,17 @@ def BatchTable_embedding(tasks):
     save_dir = tasks['GeneralParameters']['EmbeddingDir']
     structure_dir = tasks['GeneralParameters']['PDBDir']
 
-    df = pd.read_excel(os.path.join(tasks["GeneralParameters"]["RootDir"], f"{tasks['GeneralParameters']['TaskFile']}.xlsx"), 
-                       sheet_name='Sheet1')
+    task_file_path = os.path.join(tasks["GeneralParameters"]["RootDir"], f"{tasks['GeneralParameters']['TaskFile']}.xlsx")
+    if not os.path.isfile(task_file_path):
+        logger.error(f"Task file not found for BatchTable mode: {task_file_path}")
+        return
+
+    df = pd.read_excel(task_file_path, sheet_name='Sheet1')
     df = df.dropna(subset=['structure_file']).drop_duplicates(subset=['structure_file'])
-    if not os.path.isdir(save_dir):
-        os.makedirs(save_dir)
+    os.makedirs(save_dir, exist_ok=True)
 
     for _, row in df.iterrows():
         file_string = str(row['structure_file']).upper().split('.')[0]
-        # pdb_fnames and protein_chain should have same orders
         pdb_fnames = file_string.split(':')
         protein_chain = row['protein_chain'].split(',')
 
@@ -199,54 +203,56 @@ def BatchTable_embedding(tasks):
             N_model = int(tasks['TaskParameters']['DockingModelNum'])
             protein_chain_hhms = {chain: pdb_fnames[j+1] for j, chain in enumerate(protein_chain)}
             for i in range(1, N_model+1):
-                embed_protein(structure_dir, hhm_dir, save_dir, f'MODEL_{i}_NATIVE', protein_chain_hhms, NA_chain=[], SM_chain=[])
+                embed_protein(structure_dir, hhm_dir, save_dir, f'MODEL_{i}_REVISED', protein_chain_hhms, NA_chain=[], SM_chain=[])
 
-def XML_embedding(tasks):
+
+def run_embedding(tasks):
+    """
+    Runs the embedding process for Single, BatchAF, or BatchDock modes.
+
+    Args:
+        tasks (dict): The main configuration dictionary loaded from YAML.
+    """
     structure_dir = tasks['GeneralParameters']['PDBDir']
     hhm_dir = tasks['GeneralParameters']['hhmDir']
     save_dir = tasks['GeneralParameters']['EmbeddingDir']
-    pdb_fname = tasks['EmbeddingParameters']['StructureList']
+    pdb_fnames = tasks['EmbeddingParameters']['StructureList']
     protein_chain_hhms = tasks['EmbeddingParameters']['hhmToUse']
+    na_chains = tasks['EmbeddingParameters'].get('NAChains')
+    sm_chains = tasks['EmbeddingParameters'].get('SMChains')
 
     os.makedirs(save_dir, exist_ok=True)
 
-    if tasks['GeneralParameters']['Mode'] == 'Single':
+    logger.info(f"Running embedding for {len(pdb_fnames)} structures in mode: {tasks['GeneralParameters']['Mode']}")
+    for pdb_fname in pdb_fnames:
         embed_protein(
             structure_dir=structure_dir,
             hhm_dir=hhm_dir,
             save_dir=save_dir,
-            pdb_fname=pdb_fname[0],
+            pdb_fname=pdb_fname,
             protein_chain_hhms=protein_chain_hhms,
-            NA_chain=[],
-            SM_chain=[]
+            NA_chain=na_chains,
+            SM_chain=sm_chains
         )
-    elif tasks['GeneralParameters']['Mode'] in ['BatchAF', 'BatchDock']:
-        for pdb in pdb_fname:
-            embed_protein(
-                structure_dir=structure_dir,
-                hhm_dir=hhm_dir,
-                save_dir=save_dir,
-                pdb_fname=pdb,
-                protein_chain_hhms=protein_chain_hhms,
-                NA_chain=[],
-                SM_chain=[]
-            )
 
 if __name__ == "__main__":
-    # Logging setup
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(message)s",
-        handlers=[logging.StreamHandler()]
-    )
-
-    import argparse
-    parser = argparse.ArgumentParser(description='Generate protein embeddings.')
-    parser.add_argument('-input', type=str, required=True, help='XML task file path')
+    logger.info("Running protein embedding as a standalone script.")
+    parser = argparse.ArgumentParser(description='Generate protein embeddings from a YAML config file.')
+    parser.add_argument('--config', type=str, required=True, help='Path to the master YAML config file.')
     args = parser.parse_args()
 
-    _, tasks = parse_task(args.input)
-    if tasks['GeneralParameters']['Mode'] == 'BatchTable':
-        BatchTable_embedding(tasks = tasks)
+    if not os.path.isfile(args.config):
+        raise FileNotFoundError(f"Configuration file not found: {args.config}")
+
+    _, tasks = parse_task(args.config)
+    
+    if tasks.get("EmbeddingParameters", {}).get("Switch", "False") != "True":
+        logger.warning("Embedding switch is not set to 'True' in the config. Exiting.")
     else:
-        XML_embedding(tasks = tasks)
+        if tasks['GeneralParameters']['Mode'] == 'BatchTable':
+            logger.info("Starting embedding in BatchTable mode.")
+            BatchTable_embedding(tasks=tasks)
+        else:
+            logger.info("Starting embedding in Single/BatchAF/BatchDock mode.")
+            run_embedding(tasks=tasks)
+    logger.info("Standalone embedding script finished.")

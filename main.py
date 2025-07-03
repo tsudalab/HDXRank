@@ -6,11 +6,12 @@ Note:
 HDXRank main function for running the pipeline.
 """
 import argparse
-from HDXRank_prot_embedding import BatchTable_embedding, XML_embedding
+from HDXRank_prot_embedding import BatchTable_embedding, run_embedding
 from HDXRank_graph_tasks import save_graphs
-from HDXRank_utilis import parse_task
+from HDXRank_utils import parse_task
 from HDXRank_dataset import pepGraph
 from HDXRank_prediction import HDXRank_prediction
+from HDXRank_score import run_scoring
 import logging
 
 for handler in logging.root.handlers[:]:
@@ -28,7 +29,7 @@ def print_hdxrank_info():
     """
     logo = """
     *****************************************
-    *        Welcome to use HDXRank         *
+    *             HDXRank Tool             *
     *****************************************
     """
     paper_info = """
@@ -47,29 +48,29 @@ def main():
     print_hdxrank_info()
 
     parser = argparse.ArgumentParser(description="HDXRank prediction pipeline.")
-    parser.add_argument("-input", type=str, required=True, help="Path to XML setting file.")
+    parser.add_argument("--config", type=str, required=True, help="Path to the master YAML config file.")
     args = parser.parse_args()
 
-    keys, tasks = parse_task(args.input)
+    keys, tasks = parse_task(args.config)
 
     # tasks checking
     # code here
     ##############################
 
     # Protein Embedding
-    if tasks["EmbeddingParameters"]["Switch"] == "True":
+    if tasks.get("EmbeddingParameters", {}).get("Switch", "False") == "True":
         print('\n')
         logging.info("Protein Embedding...")
         if tasks['GeneralParameters']['Mode'] == 'BatchTable':
-            BatchTable_embedding(tasks = tasks)
+            BatchTable_embedding(tasks=tasks)
         else:
-            XML_embedding(tasks = tasks)
+            run_embedding(tasks=tasks)
     else:
         print('\n')
         logging.info("Skipping Protein Embedding")
     
     # Peptide Graph Construction
-    if tasks["TaskParameters"]["Switch"] == "True":
+    if tasks.get("TaskParameters", {}).get("Switch", "False") == "True":
         print('\n')
         logging.info("Peptide Graph Construction...")
         graph_dataset = pepGraph(
@@ -91,13 +92,22 @@ def main():
         logging.info("Skipping Peptide Graph Construction")
 
     # Prediction
-    if tasks["PredictionParameters"]["Switch"] == "True":
+    if tasks.get("PredictionParameters", {}).get("Switch", "False") == "True":
         print('\n')
         logging.info("HDXRank Prediction...")
         HDXRank_prediction(tasks, keys)
     else:
         print('\n')
         logging.info("Skipping HDXRank Prediction")
+
+    # Scoring
+    if tasks.get("ScorerSettings", {}).get("Switch", "False") == "True":
+        print('\n')
+        logging.info("HDXRank Scoring...")
+        run_scoring(tasks)
+    else:
+        print('\n')
+        logging.info("Skipping HDXRank Scoring")
 
 if __name__ == '__main__':
     main()
