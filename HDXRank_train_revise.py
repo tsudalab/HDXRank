@@ -16,7 +16,7 @@ from tqdm import tqdm
 from torch import nn
 from torchdrug.data import DataLoader
 from GearNet_revise import GearNet
-from HDXRank_utilis import parse_task
+from HDXRank_utils import parse_task
 import random
 
 def set_random_seed(seed=42, deterministic=True, benchmark=False):
@@ -200,8 +200,8 @@ def train_model(model, optimizer, scheduler, loss_fn, train_loader, val_loader, 
         else:
             logging.info(f'Epoch {epoch}: Loss {epoch_train_loss:.3f}, rho {epoch_rp_train:.3f}, RMSE {epoch_train_rmse:.3f}')
 
-        if epoch % 5 == 0:
-            save_checkpoint(model, optimizer, epoch, os.path.join(save_dir, f'HDXRank_GN56_epoch{epoch}_v{repeat_idx}.pth'))
+        #if epoch % 5 == 0:
+        #    save_checkpoint(model, optimizer, epoch, os.path.join(save_dir, f'HDXRank_epoch{epoch}_v{repeat_idx}.pth'))
 
     return rmse_train_list, rp_train
 
@@ -228,19 +228,20 @@ def main():
     if not os.path.isfile(args.config):
         raise FileNotFoundError(f"Config file not found: {args.config}")
 
+    #FIXME: remove keys usage
     keys, tasks = parse_task(args.config)
     train_cfg = tasks.get('TrainParameters', {})
 
     # Allow CLI overrides
-    save_dir = args.save if args.save else train_cfg.get('SaveDir', './trained_models')
+    save_dir = args.save if args.save else train_cfg.get('SaveDir', './models')
     num_epochs = args.epoch if args.epoch is not None else train_cfg.get('Epochs', 100)
     cuda_device = args.cuda if args.cuda is not None else train_cfg.get('CudaID', 0)
     train_val_split = args.train_val_split if args.train_val_split is not None else train_cfg.get('TrainValSplit', 0.2)
     batch_size = args.batch_size if args.batch_size is not None else train_cfg.get('BatchSize', 16)
     repeat = args.repeat if args.repeat is not None else train_cfg.get('Repeat', 1)
-    model_name = args.name if args.name else train_cfg.get('ModelName', 'HDXRank_GN56_cls1')
+    model_name = args.name if args.name else train_cfg.get('ModelName', 'HDXRank_')
 
-    seeds = [42, 43, 44, 45, 46]
+    seeds = train_cfg.get('Seeds', [42, 43, 44, 45, 46])
     device = torch.device(f'cuda:{cuda_device}' if torch.cuda.is_available() else 'cpu')
 
     apo_input, complex_input = load_data(tasks)
@@ -263,7 +264,9 @@ def main():
         logging.info(f'training set: {len(train_set)}')
         logging.info(f'validation set: {len(val_set)}')
 
-        model, optimizer, scheduler, loss_fn = prepare_model(input_dim=56, hidden_dims=[64, 64, 64], num_relation=7, 
+        input_dim = train_cfg.get('InputDim', 56)
+        hidden_dims = train_cfg.get('HiddenDims', [64, 64, 64])
+        model, optimizer, scheduler, loss_fn = prepare_model(input_dim=input_dim, hidden_dims=hidden_dims, num_relation=7, 
                                                              device=device, set_scheduler="cosine", t_max=100)
         rmse_train_list, rp_train = train_model(model, optimizer, scheduler, loss_fn, train_loader, val_loader, device, num_epochs, save_dir, i)
 

@@ -1,4 +1,5 @@
 import os
+import math
 import argparse
 import pandas as pd
 from tqdm import tqdm
@@ -16,7 +17,7 @@ def run_scoring(tasks):
         tasks (dict): The main configuration dictionary loaded from YAML.
     """
     # Get scorer-specific settings and protein states
-    settings, apo_states, complex_states = Scorer.parse_config(tasks)
+    apo_states, complex_states = tasks["apo_states"], tasks["complex_states"]
     logger.info("Successfully parsed scorer configuration.")
     logger.debug(f"Apo states: {apo_states}")
     logger.debug(f"Complex states: {complex_states}")
@@ -25,14 +26,16 @@ def run_scoring(tasks):
     general_params = tasks.get('GeneralParameters', {})
     pred_params = tasks.get('PredictionParameters', {})
     task_params = tasks.get('TaskParameters', {})
+    score_params = tasks.get('ScorerParameters', {})
 
     root_dir = general_params.get('RootDir', '.')
-    save_dir = settings.get('save_dir', '.')
-    protein_name = settings.get('protein_name', task_params.get('Protein')) 
-    cluster_id = settings['cluster_id']
-    HDX_fpath = os.path.join(root_dir, settings["HDX_file"])
-    pred_cluster = settings['pred_cluster']
-    timepoints = settings['timepoints']
+    save_dir = os.path.join(root_dir, score_params.get('save_dir', '.'))
+    protein_name = score_params.get('protein_name', "protein") 
+    cluster_id = score_params.get('cluster_id', 1) # cluster_id is used to specify the time cluster index
+    HDX_fpath = os.path.join(general_params['HDXDir'], f'{general_params["HDX_File"]}.xlsx')
+    pred_cluster = score_params['pred_cluster']
+    timepoints = score_params['timepoints']
+    timepoints = [math.log10(tp) for tp in timepoints]  # Convert timepoints to log10 scale
 
     hdx_true_diffs = []
     hdx_epitope_peps = []
@@ -43,7 +46,7 @@ def run_scoring(tasks):
         hdx_true_diffs.append(true_diff)
         hdx_epitope_peps.append(epitope_pep)
 
-    pred_suffix = settings.get('pred_suffix', '')
+    pred_suffix = score_params.get('pred_suffix', '')
     pred_dir = pred_params.get('PredDir')
     pred_df = Scorer.parse_predictions(pred_dir, suffix=pred_suffix)
 
@@ -51,16 +54,13 @@ def run_scoring(tasks):
         logger.error(f"No prediction files found in {pred_dir} with suffix '{pred_suffix}'. Exiting.")
         return
 
-    logger.debug(f"Prediction data head:\n{pred_df.head()}")
-    logger.info(f"Number of unique batches: {len(pred_df['Batch'].unique())}")
-
     pred_df_dict = {batch: group for batch, group in pred_df.groupby('Batch')}
-    complex_batch_list = [batch for batch in pred_df_dict.keys() if 'MODEL' in batch]
-    logger.info(f"Found {len(complex_batch_list)} model batches to score.")
+    complex_batch_list = [batch for batch in pred_df_dict.keys() if 'MODEL' in batch] #FIXME: remove MODEL requirements
+    logger.info(f"Found {len(complex_batch_list)} models to score.")
 
     HDX_scores = {}
     y_true_list, y_pred_list = [], []
-    for complex_batch in tqdm(complex_batch_list, desc="Scoring models"):
+    for complex_batch in tqdm(complex_batch_list, desc="Scoring models", ncols=100):
         y_true, y_pred = Scorer.prepare_data(
             pred_df_dict, complex_batch, apo_states, hdx_true_diffs, 
             hdx_epitope_peps=hdx_epitope_peps, pred_cluster=pred_cluster
@@ -96,13 +96,13 @@ def main():
     if not os.path.exists(args.config):
         raise FileNotFoundError(f"Config file {args.config} not found")
 
-    _, tasks = parse_task(args.config)
+    tasks = parse_task(args.config)
     
     # Allow command-line --save to override the config setting
     if args.save:
-        if 'ScorerSettings' not in tasks: tasks['ScorerSettings'] = {}
-        if 'settings' not in tasks['ScorerSettings']: tasks['ScorerSettings']['settings'] = {}
-        tasks['ScorerSettings']['settings']['save_dir'] = args.save
+        if 'ScorerSettings' not in tasks: tasks['ScorerParameters'] = {}
+        if 'settings' not in tasks['ScorerParameters']: tasks['ScorerParameters']['settings'] = {}
+        tasks['ScorerParameters']['settings']['save_dir'] = args.save
         
     run_scoring(tasks)
 

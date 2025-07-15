@@ -86,6 +86,7 @@ def embed_protein(structure_dir, hhm_dir, save_dir, pdb_fname, protein_chain_hhm
     if SM_chain is None: SM_chain = []
     
     logger.info(f'Processing: {pdb_fname}')
+    pdb_fname = pdb_fname.rstrip('.pdb')
 
     save_file = os.path.join(save_dir, f'{pdb_fname}.pt')
     if os.path.isfile(save_file):
@@ -104,12 +105,12 @@ def embed_protein(structure_dir, hhm_dir, save_dir, pdb_fname, protein_chain_hhm
 
     for chain in chains:
         chain_id = chain.get_id()
-        hhm_file = os.path.join(hhm_dir, f'{protein_chain_hhms.get(chain_id, "")}_{chain_id}.hhm')
+        hhm_file = os.path.join(hhm_dir, f'{protein_chain_hhms.get(chain_id)}.hhm')
         if chain_id in protein_chain_hhms:
-            if os.path.isfile(hhm_file):
-                protein_inputs.append(load_protein(hhm_file, pdb_file, chain_id))
-            else:
+            if not os.path.isfile(hhm_file):
                 logger.error(f'Missing HMM for chain {chain_id}: {hhm_file}')
+                continue
+            protein_inputs.append(load_protein(hhm_file, pdb_file, chain_id))
         elif chain_id in NA_chain:
             NA_inputs.append(load_nucleic_acid(pdb_file, chain_id))
         elif chain_id in SM_chain:
@@ -205,7 +206,6 @@ def BatchTable_embedding(tasks):
             for i in range(1, N_model+1):
                 embed_protein(structure_dir, hhm_dir, save_dir, f'MODEL_{i}_REVISED', protein_chain_hhms, NA_chain=[], SM_chain=[])
 
-
 def run_embedding(tasks):
     """
     Runs the embedding process for Single, BatchAF, or BatchDock modes.
@@ -216,14 +216,15 @@ def run_embedding(tasks):
     structure_dir = tasks['GeneralParameters']['PDBDir']
     hhm_dir = tasks['GeneralParameters']['hhmDir']
     save_dir = tasks['GeneralParameters']['EmbeddingDir']
-    pdb_fnames = tasks['EmbeddingParameters']['StructureList']
-    protein_chain_hhms = tasks['EmbeddingParameters']['hhmToUse']
-    na_chains = tasks['EmbeddingParameters'].get('NAChains')
-    sm_chains = tasks['EmbeddingParameters'].get('SMChains')
+    pdb_fnames = tasks['structure_list']
+    protein_chain_hhms = tasks['TaskParameters']['protein_chain_hhms']
+    na_chains = tasks['TaskParameters'].get('NAChains', None)
+    sm_chains = tasks['TaskParameters'].get('SMChains', None)
 
     os.makedirs(save_dir, exist_ok=True)
 
     logger.info(f"Running embedding for {len(pdb_fnames)} structures in mode: {tasks['GeneralParameters']['Mode']}")
+    #embed apo states and predicted complexes
     for pdb_fname in pdb_fnames:
         embed_protein(
             structure_dir=structure_dir,
@@ -244,15 +245,12 @@ if __name__ == "__main__":
     if not os.path.isfile(args.config):
         raise FileNotFoundError(f"Configuration file not found: {args.config}")
 
-    _, tasks = parse_task(args.config)
-    
-    if tasks.get("EmbeddingParameters", {}).get("Switch", "False") != "True":
-        logger.warning("Embedding switch is not set to 'True' in the config. Exiting.")
+    tasks = parse_task(args.config)
+
+    if tasks['GeneralParameters']['Mode'].lower() == 'train':
+        BatchTable_embedding(tasks=tasks)
+    elif tasks['GeneralParameters']['Mode'].lower() == 'predict':
+        run_embedding(tasks=tasks)
     else:
-        if tasks['GeneralParameters']['Mode'] == 'BatchTable':
-            logger.info("Starting embedding in BatchTable mode.")
-            BatchTable_embedding(tasks=tasks)
-        else:
-            logger.info("Starting embedding in Single/BatchAF/BatchDock mode.")
-            run_embedding(tasks=tasks)
+        raise ValueError(f"undefined mode: {tasks['GeneralParameters']['Mode']}")
     logger.info("Standalone embedding script finished.")

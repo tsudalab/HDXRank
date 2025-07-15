@@ -51,57 +51,46 @@ def main():
     parser.add_argument("--config", type=str, required=True, help="Path to the master YAML config file.")
     args = parser.parse_args()
 
-    keys, tasks = parse_task(args.config)
+    tasks = parse_task(args.config)
 
     # tasks checking
     # code here
     ##############################
 
-    # Protein Embedding
-    if tasks.get("EmbeddingParameters", {}).get("Switch", "False") == "True":
+    if tasks.get("TaskParameters", {}).get("Switch", False) in [True, "True", "true", "1"]:
+        # Protein Embedding
         print('\n')
         logging.info("Protein Embedding...")
-        if tasks['GeneralParameters']['Mode'] == 'BatchTable':
+        if tasks['GeneralParameters']['Mode'].lower() == 'train':
             BatchTable_embedding(tasks=tasks)
-        else:
+        elif tasks['GeneralParameters']['Mode'].lower() == 'predict':
             run_embedding(tasks=tasks)
-    else:
-        print('\n')
-        logging.info("Skipping Protein Embedding")
-    
-    # Peptide Graph Construction
-    if tasks.get("TaskParameters", {}).get("Switch", "False") == "True":
+        else:
+            raise ValueError(f"Invalid mode: {tasks['GeneralParameters']['Mode']}")
+
+        # Peptide Graph Construction
         print('\n')
         logging.info("Peptide Graph Construction...")
         graph_dataset = pepGraph(
-            keys,
-            tasks["GeneralParameters"]["RootDir"],
-            tasks["GeneralParameters"]["EmbeddingDir"],
-            tasks["GeneralParameters"]["PDBDir"],
-            tasks["GeneralParameters"]["pepGraphDir"],
-            min_seq_sep=tasks["GraphParameters"]["SeqMin"],
-            max_distance=tasks["GraphParameters"]["RadiusMax"],
-            graph_type=tasks["GraphParameters"]["GraphType"],
-            embedding_type=tasks["GraphParameters"]["EmbeddingType"],
-            max_len=tasks["GraphParameters"]["MaxLen"],
-            pep_range=tasks["GraphParameters"]["PepRange"]
+            files=tasks['structure_list'],
+            tasks=tasks,
         )
         save_graphs(graph_dataset, tasks["GeneralParameters"]["pepGraphDir"])
     else:
         print('\n')
-        logging.info("Skipping Peptide Graph Construction")
+        logging.info("Skipping Protein Embedding and Peptide Graph Construction")
 
     # Prediction
-    if tasks.get("PredictionParameters", {}).get("Switch", "False") == "True":
+    if tasks.get("PredictionParameters", {}).get("Switch", False) in [True, "True", "true", "1"]:
         print('\n')
         logging.info("HDXRank Prediction...")
-        HDXRank_prediction(tasks, keys)
+        HDXRank_prediction(tasks)
     else:
         print('\n')
         logging.info("Skipping HDXRank Prediction")
 
     # Scoring
-    if tasks.get("ScorerSettings", {}).get("Switch", "False") == "True":
+    if tasks.get("ScorerParameters", {}).get("Switch", False) in [True, "True", "true", "1"]:
         print('\n')
         logging.info("HDXRank Scoring...")
         run_scoring(tasks)

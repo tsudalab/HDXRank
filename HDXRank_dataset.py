@@ -93,6 +93,7 @@ def parse_PDB(PDB_path, protein_chains=['A'], atom_type_list=['N','CA','C', 'O']
     Returns:
         list: A list of residue information.
     """
+    chain_letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     if not os.path.isfile(PDB_path):
         logging.error(f"Error: File not found. {PDB_path}")
         return None
@@ -132,7 +133,7 @@ def parse_PDB(PDB_path, protein_chains=['A'], atom_type_list=['N','CA','C', 'O']
                                 'res_name': chain_info['last_res_info'][0], 
                                 'residue_coord': chain_info['backbone_coord'].copy(),
                                 'residue_id': chain_info['last_res_info'][1],
-                                'chain_id': protein_chains.index(chain_info['last_res_info'][2]),
+                                'chain_id': chain_letters.index(chain_info['last_res_info'][2]),
                                 'bfactor': chain_info['bfactor']/atom_count
                             }
                         )
@@ -159,7 +160,7 @@ def parse_PDB(PDB_path, protein_chains=['A'], atom_type_list=['N','CA','C', 'O']
                     'res_name': chain_info['last_res_info'][0], 
                     'residue_coord': chain_info['backbone_coord'].copy(),
                     'residue_id': chain_info['last_res_info'][1],
-                    'chain_id': protein_chains.index(chain_info['last_res_info'][2]),
+                    'chain_id': chain_letters.index(chain_info['last_res_info'][2]),
                     'bfactor': chain_info['bfactor']/atom_count
                 }
             )
@@ -176,19 +177,20 @@ def parse_PDB(PDB_path, protein_chains=['A'], atom_type_list=['N','CA','C', 'O']
 
     return nodes
 
-def read_HDX_table(HDX_df, proteins, states, chains, correction, protein_chains): 
+def read_HDX_table(HDX_df, protein_args, mode='predict'): 
     '''parse the HDX table
     Args:
         HDX_df: pandas dataframe, HDX table
-        proteins: list of str, protein names
-        states: list of str, state names
-        chains: list of str, protein chains
-        correction: list of int, correction value for the residue index
-        protein_chains: list of str, protein chains
+        protein_args:
+            proteins: list of str, protein names
+            states: list of str, state names
+            chains: list of str, protein chains
+            correction: list of int, correction value for the residue index
     '''
     pep._registry = [] # reset the peptide registry
     npep = 0
     res_chainsplit = {}
+    protein_chains = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     timepoints = [1.35, 2.85] #predefined log_t boundaries according to k-mean clustering results
 
     for residue in res._registry:
@@ -196,10 +198,13 @@ def read_HDX_table(HDX_df, proteins, states, chains, correction, protein_chains)
             res_chainsplit[residue.chain_id] = []
         res_chainsplit[residue.chain_id].append(residue)
     ## seperately process states
-    for index, (protein, state, chain) in enumerate(zip(proteins, states, chains)):
+    for index, (protein, state, correction, _, chain_id) in enumerate(protein_args):
         temp_HDX_df = HDX_df[(HDX_df['state']==state) & (HDX_df['protein']==protein)]
         temp_HDX_df = temp_HDX_df.sort_values(by=['start', 'end'], ascending=[True, True])
-        chain_index = protein_chains.index(chain)
+        chain_index = protein_chains.index(chain_id)
+        if chain_index not in res_chainsplit.keys():
+            continue
+
         logger.debug(f"HDX table after filtering by protein and state: {temp_HDX_df.shape}")
 
         clusters = [temp_HDX_df[temp_HDX_df['log_t'] < timepoints[0]],
@@ -207,12 +212,13 @@ def read_HDX_table(HDX_df, proteins, states, chains, correction, protein_chains)
                     temp_HDX_df[temp_HDX_df['log_t'] >= timepoints[1]]]
 
         HDX_grouped = temp_HDX_df.groupby(['start', 'end']) 
+
         for name, group in HDX_grouped:
-            mean_rfu = [-1,-1,-1] ## new insert code 25/3/11
+            mean_rfu = [-1,-1,-1]
 
             sequence = group['sequence'].iloc[0].strip() if not group['sequence'].empty else ''
-            start_pos = int(name[0])+correction[index]
-            end_pos = int(name[1])+correction[index]
+            start_pos = int(name[0])+correction
+            end_pos = int(name[1])+correction
             
             for i, cluster_df in enumerate(clusters):
                 cluster_group = cluster_df[(cluster_df['start']==name[0]) & (cluster_df['end']==name[1])]
@@ -223,17 +229,20 @@ def read_HDX_table(HDX_df, proteins, states, chains, correction, protein_chains)
 
             # to train the model, all three mean_rfu should be non-negative
             # for prediction, at least one mean_rfu should be non-negative
-
-            if all(x == -1 for x in mean_rfu):
-                logger.debug(f"mean_rfu is -1 for {protein} {state} {chain} {name}")
-                continue
-            ### end
+            if mode == 'train':
+                if any(x == -1 for x in mean_rfu):
+                    logger.debug(f"[train Mode]: mean_rfu is -1 for {protein} {state} {chain_id} {name}")
+                    continue
+            elif mode == 'predict':
+                if all(x == -1 for x in mean_rfu):
+                    logger.debug(f"[predict Mode]: mean_rfu is -1 for {protein} {state} {chain_id} {name}")
+                    continue
 
             res_seq = [res for res in res_chainsplit[chain_index] if start_pos <= res.i <= end_pos]
             pdb_seq = ''.join([protein_letters_3to1[res.name] for res in res_seq])
 
             if pdb_seq != sequence: # residue lack/mutation/mismatch in pdb will be filtered out
-                logging.info(f"sequence mismatch: chain: {chain}, pdb_Seq: {pdb_seq}, HDX_seq:, {sequence}")
+                logging.info(f"sequence mismatch: chain: {chain_id}, pdb_Seq: {pdb_seq}, HDX_seq:, {sequence}")
                 continue
             else:
                 peptide = pep(npep, sequence, chain_index, start_pos, end_pos, mean_rfu)
@@ -473,17 +482,17 @@ def create_graph(pdb_fpath, embedding_dir, embedding_fname, **kwargs):
     G = add_edges(G, edge_to_add, coord=coords, max_distance=kwargs['max_distance'], min_seq_sep=kwargs['min_seq_sep'])
     return G
 
-def load_pep(HDX_fpath, chain_identifier, correction, protein, state, protein_chains, max_len =30, pep_range = None):
+def load_pep(HDX_fpath, protein_args, max_len =30, pep_range = None):
     '''
     Pre-process the HDX table and load peptides into the pep.registry
 
     Args:
         HDX_fpath: str, path to the HDX table file
-        chain_identifier: str, chain identifier
-        correction: int, correction value for the residue index
-        protein: list of str, protein names
-        state: list of str, state names
-        protein_chains: list of str, protein chains
+        protein_args:
+            proteins: list of str, protein names
+            states: list of str, state names
+            chains: list of str, protein chains
+            correction: list of int, correction value for the residue index
         max_len: int, maximum length of the peptide
         pep_range: list of tuples, each tuple contains the start and end position of the peptide. [(a,b), (c,d), ...]
     '''
@@ -491,21 +500,22 @@ def load_pep(HDX_fpath, chain_identifier, correction, protein, state, protein_ch
     ### -------- filter HDX table ------ ####
     HDX_df['state'] = HDX_df['state'].str.replace(' ', '')
     HDX_df['protein'] = HDX_df['protein'].str.replace(' ', '')
-    protein = [p.replace(' ', '').strip() for p in protein]
-    state = [s.replace(' ', '').strip() for s in state]
+    fn = lambda x: x.replace(' ', '').strip()
+    protein = [fn(p[0]) for p in protein_args]
+    state = [fn(p[1]) for p in protein_args]
 
     # filter the HDX table
     HDX_df = HDX_df[(HDX_df['state'].isin(state)) & (HDX_df['protein'].isin(protein))]
     HDX_df = HDX_df[HDX_df['sequence'].str.len() < max_len]
+    
     if pep_range: #providing specific range (start, end) to filter the peptides
         filtered_df = pd.DataFrame()
         for start, end in pep_range:
             filtered_df = pd.concat([filtered_df, HDX_df[(HDX_df['start'] >= start) & (HDX_df['end'] <= end)]])
         HDX_df = filtered_df.drop_duplicates().reset_index(drop=True)
-    HDX_df = HDX_df.sort_values(by=['start', 'end'], ascending=[True, True]) # mixed states will be separated in read_HDX_table func.
+    HDX_df = HDX_df.sort_values(by=['start', 'end'], ascending=[True, True])
     
-    if not read_HDX_table(HDX_df, protein, state, chain_identifier, correction, 
-                        protein_chains): # read HDX table file
+    if not read_HDX_table(HDX_df, protein_args): # read HDX table file
         return None
     logging.info(f"Read in {len(pep._registry)} peptides.")
 
@@ -679,7 +689,7 @@ def split_PyG_graph(G, complex_state_id = 0):
 '''
 
 class pepGraph(Dataset):
-    def __init__(self, keys, root_dir, embedding_dir, pdb_dir, save_dir, **kwargs):
+    def __init__(self, files, tasks, **kwargs):
         """
         Initialize the dataset.
 
@@ -691,15 +701,23 @@ class pepGraph(Dataset):
             save_dir (str): Directory to save the processed data.
             **kwargs: Additional parameters.
         """
-        self.keys = keys
-        self.root_dir = root_dir
-        self.save_dir = save_dir
-        self.hdx_dir = os.path.join(root_dir, 'HDX_files')
-        self.fasta_dir = os.path.join(root_dir, 'fasta_files')        
+        self.keys = files
+        self.root_dir = tasks["GeneralParameters"]["RootDir"]
+        self.save_dir = tasks["GeneralParameters"]["pepGraphDir"]
+        self.pdb_dir = tasks["GeneralParameters"]["PDBDir"]        
+        self.hdx_dir = tasks["GeneralParameters"]["HDXDir"]
+        self.embedding_dir = tasks["GeneralParameters"]["EmbeddingDir"]
+        self.tasks = tasks
 
-        self.embedding_dir = embedding_dir
-        self.pdb_dir = pdb_dir
-        self.params = kwargs
+        self.params = {
+            'min_seq_sep': tasks["GraphParameters"]["SeqMin"],
+            'max_distance': tasks["GraphParameters"]["RadiusMax"],
+            'graph_type': tasks["GraphParameters"]["GraphType"],
+            'embedding_type': tasks["GraphParameters"]["EmbeddingType"],
+            'max_len': tasks["GraphParameters"]["MaxLen"],
+            'pep_range': tasks["TaskParameters"]["PepRange"],
+            **kwargs
+        }
         self.complex_state_dict = {'apo':0, 'single':0, 'protein complex':1, 'ligand complex':2, 'dna complex':3, 'rna complex': 4}
 
     def __len__(self):
@@ -714,25 +732,13 @@ class pepGraph(Dataset):
         res._registry = []
         pep._registry = []
 
-        database_id = self.keys[0][index].strip()
-        pdb_fname = self.keys[3][index].strip().split('.')[0].upper()
-        protein = self.keys[1][index]
-        state = self.keys[2][index]
-        chain_identifier = self.keys[4][index]
-        correction = self.keys[5][index]
-        protein_chains = self.keys[6][index]
-        complex_state = self.keys[7][index]
-        #embedding_fname = self.keys[8][index]
-
-        logging.info(f'Processing task: {database_id} {protein} {state} {chain_identifier}')
-
+        pdb_fname = self.keys[index].rstrip('.pdb')
+        database_id = self.tasks["GeneralParameters"]["HDX_File"]
         pdb_fpath = os.path.join(self.pdb_dir, f'{pdb_fname}.pdb')
         target_HDX_fpath = os.path.join(self.hdx_dir, f'{database_id}.xlsx')
-        if isinstance(protein_chains, str):
-            protein_chains = protein_chains.split(',')
-        elif isinstance(protein_chains, list):
-            protein_chains = [chains.split(',') for chains in protein_chains]
-        
+        is_complex = self.tasks['TaskParameters']['is_complex'][index]
+        logging.info(f'Processing task: {database_id} {pdb_fname}')
+
         if os.path.isfile(os.path.join(self.save_dir, f'{pdb_fname}.pt')):
             logging.info(f'File already exists: {pdb_fname}.pt')
             return None
@@ -751,14 +757,13 @@ class pepGraph(Dataset):
             logging.error("Cannot create graph")
             return None
 
-        load_pep(target_HDX_fpath, chain_identifier, correction, protein, state, G.graph['protein_chains'], 
+        load_pep(target_HDX_fpath, self.tasks['apo_states'], 
                 max_len = self.params['max_len'], pep_range = self.params['pep_range'])
 
         #plddt filter can be applied here
         #plddt_filter = None if not pdb_fname.startswith('FOLD') else 90 # only filter out low res-pLDDT regions for AlphaFold models
-        
         if self.params['graph_type'] == 'GearNet': # for GearNet
-            graph_ensemble = split_graph(G, max_len = self.params['max_len'], complex_state_id = self.complex_state_dict[complex_state],
+            graph_ensemble = split_graph(G, max_len = self.params['max_len'], complex_state_id = self.complex_state_dict[is_complex],
                                         graph_type = self.params['graph_type'], plddt_filter = None)
         else:
             logging.error(f"Unknown graph type: {self.params['graph_type']}")

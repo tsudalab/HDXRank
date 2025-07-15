@@ -32,7 +32,7 @@ def save_graphs(graph_dataset, save_dir):
     os.makedirs(save_dir, exist_ok=True)
     count = 0
     logger.info(f"Saving graphs to {save_dir}...")
-    for i, data in tqdm(enumerate(graph_dataset), total=len(graph_dataset), desc="Saving Graphs"):
+    for i, data in tqdm(enumerate(graph_dataset), total=len(graph_dataset), desc="Saving Graphs", ncols=0):
         if data is None:
             continue
         graph_ensemble, label = data
@@ -54,6 +54,7 @@ def main():
     if not os.path.isfile(args.config):
         raise FileNotFoundError(f"Configuration file not found: {args.config}")
 
+    # FIXME:remove keys usage
     keys, tasks = parse_task(args.config)
 
     logger.info("Initializing graph dataset...")

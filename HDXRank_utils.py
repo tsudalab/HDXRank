@@ -23,26 +23,40 @@ warnings.filterwarnings("ignore")
 
 def config_process(config_file):
     """
-    Parses a YAML configuration file and performs necessary post-processing.
+    Parses a YAML configuration file, processes all necessary parameters,
+    and attaches apo_states and complex_states directly into the config dict.
+
+    Args:
+        config_file (str): Path to the YAML configuration file.
+
+    Returns:
+        dict: The processed configuration dictionary with all settings,
+              including 'apo_states' and 'complex_states' as keys.
     """
+    # Load YAML
     with open(config_file, 'r') as f:
-        tasks = yaml.safe_load(f)
+        config = yaml.safe_load(f)
 
-    # Post-process: Join paths with RootDir
-    root_dir = tasks.get("GeneralParameters", {}).get("RootDir", ".")
-    if "GeneralParameters" in tasks:
+    # Extract scorer and task settings
+    general_settings = config.get('GeneralParameters', {})
+    scorer_settings = config.get('ScorerParameters', {})
+    task_settings = config.get('TaskParameters', {})
+    prediction_settings = config.get('PredictionParameters', {})
+
+    # Path joining
+    root_dir = general_settings.get("RootDir", ".")
+    if "GeneralParameters" in config:
         for key in ["pepGraphDir", "EmbeddingDir", "PDBDir", "HDXDir", "hhmDir"]:
-            if key in tasks["GeneralParameters"] and tasks["GeneralParameters"][key]:
-                tasks["GeneralParameters"][key] = os.path.join(root_dir, tasks["GeneralParameters"][key])
-
-    if "PredictionParameters" in tasks:
+            if key in general_settings and general_settings[key]:
+                general_settings[key] = os.path.join(root_dir, general_settings[key])
+    if "PredictionParameters" in config:
         for key in ["ModelDir", "PredDir"]:
-            if key in tasks["PredictionParameters"] and tasks["PredictionParameters"][key]:
-                tasks["PredictionParameters"][key] = os.path.join(root_dir, tasks["PredictionParameters"][key])
+            if key in prediction_settings and prediction_settings[key]:
+                prediction_settings[key] = os.path.join(root_dir, prediction_settings[key])
 
-    # Post-process: Handle PepRange for GraphParameters
-    if "GraphParameters" in tasks and tasks.get("GraphParameters", {}).get("PepRange"):
-        pep_range = tasks["GraphParameters"]["PepRange"]
+    # Post-process PepRange for GraphParameters
+    if "TaskParameters" in config:
+        pep_range = task_settings.get("PepRange")
         if isinstance(pep_range, list):
             input_range = []
             for subrange in pep_range:
@@ -51,15 +65,51 @@ def config_process(config_file):
                     parts = subrange.split('-')
                     if len(parts) == 2:
                         input_range.append((int(parts[0].strip()), int(parts[1].strip())))
-            tasks["GraphParameters"]["PepRange"] = input_range
+            task_settings["PepRange"] = input_range
         elif pep_range is None or str(pep_range).lower() == 'none':
-            tasks["GraphParameters"]["PepRange"] = None
+            task_settings["PepRange"] = None
 
-    return tasks
+    # Parse protein states
+    apo_states = []
+    complex_states = []
+    for complex_info in task_settings.get('HDX_Chains', []):
+        apo = complex_info.get('apo_state', {})
+        complex = complex_info.get('complex_state', {})
 
+        apo_states.append((
+            apo.get('protein'),
+            apo.get('state'),
+            apo.get('correction_value'),
+            apo.get('structure_file'),
+            apo.get('chainID')
+        ))
+
+        complex_states.append((
+            complex.get('protein'),
+            complex.get('state'),
+            complex.get('correction_value'),
+            complex.get('structure_file'),
+            complex.get('chainID')
+        ))
+
+    if not apo_states or not complex_states:
+        raise ValueError("Apo and complex states must be defined in the configuration.")
+    if not scorer_settings:
+        raise ValueError("Scorer settings must be defined in the configuration.")
+
+    # Store states directly into config
+    config["apo_states"] = apo_states
+    config["complex_states"] = complex_states
+    config["structure_list"] = [f for f in os.listdir(general_settings.get("PDBDir", None)) if f.endswith('.pdb')]
+    config.get("TaskParameters", {}).update(task_settings) # update task settings
+    config.get("ScorerParameters", {}).update(scorer_settings) # update scorer settings
+    config.get("GeneralParameters", {}).update(general_settings) # update general settings
+    return config
+
+# TODO: modify parse_xlsx_task to return a list of tasks
 def parse_xlsx_task(tasks):
     """
-    Parse an Excel task file for BatchTable mode.
+    Parse an Excel task file for train mode.
     """
     task_fpath = os.path.join(tasks["GeneralParameters"]["RootDir"], f"{tasks['GeneralParameters']['TaskFile']}.xlsx")
     if not os.path.exists(task_fpath):
@@ -79,48 +129,26 @@ def parse_xlsx_task(tasks):
     embedding_fname = []
 
     for temp_apo in apo_identifier:
-        if temp_apo.split(":")[0] != 'MODEL':
-            temp_df = df[(df['structure_file'] == temp_apo)]
-            temp_protein = temp_df['protein'].astype(str).to_list()
-            temp_state = temp_df['state'].astype(str).to_list()
-            temp_chain = temp_df['chain_identifier'].astype(str).to_list()
-            temp_correction = temp_df['correction_value'].astype(int).to_list()
-            temp_protein_chains = temp_df['protein_chain'].astype(str).to_list()
-            temp_complex_state = temp_df['complex_state'].astype(str).to_list()
+        temp_df = df[(df['structure_file'] == temp_apo)].dropna(subset=['protein', 'state', 'chain_identifier', 'correction_value', 'protein_chain', 'complex_state'])
+        if temp_df.empty:
+            raise ValueError(f"No data found for structure {temp_apo} in the task file.")
 
-            structure_list.append(temp_apo)
-            embedding_fname.append([temp_apo.upper()] * len(temp_protein_chains))
-            protein.append(temp_protein)
-            state.append(temp_state)
-            chain_identifier.append(temp_chain)
-            correction.append(temp_correction)
-            database_id.extend(temp_df['database_id'].astype(str).unique())
-            protein_chains.append(temp_protein_chains)
-            complex_state.append(temp_complex_state[0])
-        else:
-            # BatchTable mode for docking models
-            N_model = int(tasks["TaskParameters"]["DockingModelNum"])
-            model_list = [f'MODEL_{i}_REVISED' for i in range(1, N_model + 1)]
-            apo_models = temp_apo.split(":")[1:]
-            temp_df = df[df['structure_file'].isin(apo_models)]
+        temp_protein = temp_df['protein'].astype(str).to_list()
+        temp_state = temp_df['state'].astype(str).to_list()
+        temp_chain = temp_df['chain_identifier'].astype(str).to_list()
+        temp_correction = temp_df['correction_value'].astype(int).to_list()
+        temp_protein_chains = temp_df['protein_chain'].astype(str).to_list()
+        temp_complex_state = temp_df['complex_state'].astype(str).to_list()
 
-            temp_protein = [temp_df['protein'].astype(str).to_list()] * N_model
-            temp_state = [temp_df['state'].astype(str).to_list()] * N_model
-            temp_chain = [temp_df['chain_identifier'].astype(str).to_list()] * N_model
-            temp_correction = [temp_df['correction_value'].astype(int).to_list()] * N_model
-            temp_complex_state = ['protein complex'] * N_model
-            temp_database_id = [temp_df['database_id'].astype(str).to_list()[0]] * N_model
-            temp_protein_chains = [temp_df['protein_chain'].astype(str).to_list()] * N_model
-
-            protein.extend(temp_protein)
-            state.extend(temp_state)
-            chain_identifier.extend(temp_chain)
-            correction.extend(temp_correction)
-            database_id.extend(temp_database_id)
-            protein_chains.extend(temp_protein_chains)
-            complex_state.extend(temp_complex_state)
-            embedding_fname.extend([apo_models] * N_model)
-            structure_list += model_list
+        structure_list.append(temp_apo)
+        embedding_fname.append([temp_apo.upper()] * len(temp_protein_chains))
+        protein.append(temp_protein)
+        state.append(temp_state)
+        chain_identifier.append(temp_chain)
+        correction.append(temp_correction)
+        database_id.extend(temp_df['database_id'].astype(str).unique())
+        protein_chains.append(temp_protein_chains)
+        complex_state.append(temp_complex_state[0])
 
     keys = [
         database_id, protein, state, structure_list, chain_identifier,
@@ -141,86 +169,25 @@ def parse_task(input_file):
     """
     tasks = config_process(input_file)
     keys = None
-
     if "Mode" in tasks["GeneralParameters"]:
         mode = tasks["GeneralParameters"]["Mode"]
-        if mode in ["BatchAF", "BatchDock", "Single"]:
-            chain_num = len(tasks["TaskParameters"]["ChainToConstruct"])
-            if mode == "BatchAF":
-                seed_num = tasks["TaskParameters"]["SeedNum"]
-                model_num = 5
-                copy_num = seed_num * model_num
-
-                tasks["EmbeddingParameters"]['StructureList'] = [
-                    f"{tasks['EmbeddingParameters']['StructureList']}_seed{i}_model_{j}".upper()
-                    for i in range(1, seed_num + 1)
-                    for j in range(5)
-                ]
-                tasks["TaskParameters"]['EmbeddingToUse'] = [
-                    [
-                        f"{tasks['TaskParameters']['EmbeddingToUse']}_seed{i}_model_{j}".upper()
-                        for _ in range(chain_num)
-                    ]
-                    for i in range(1, seed_num + 1)
-                    for j in range(5)
-                ]
-            elif mode == "BatchDock":
-                copy_num = int(tasks["TaskParameters"]["DockingModelNum"])
-                tasks["EmbeddingParameters"]["StructureList"] = [
-                    f"MODEL_{i}_REVISED" for i in range(1, copy_num + 1)
-                ]
-                tasks["TaskParameters"]["EmbeddingToUse"] = [
-                    [f"MODEL_{j}_REVISED" for _ in range(chain_num)]
-                    for j in range(copy_num)
-                ]
-            elif mode == "Single":
-                copy_num = 1
-                tasks["EmbeddingParameters"]["StructureList"] = [tasks["EmbeddingParameters"]["StructureList"]]
-                tasks["TaskParameters"]["EmbeddingToUse"] = [
-                    [tasks["TaskParameters"]["EmbeddingToUse"] for _ in range(chain_num)]
-                ]
-
-            entries = tasks["EmbeddingParameters"]["hhmToUse"].strip('/').split('/')
-            tasks["EmbeddingParameters"]["hhmToUse"] = {
-                entry.split(':')[0]: entry.split(':')[1] for entry in entries
-            }
-            tasks["EmbeddingParameters"]["ProteinChains"] = ",".join(
-                list(tasks["EmbeddingParameters"]["ProteinChains"])
-            )
-            tasks["EmbeddingParameters"]["ProteinChains"] = [
-                [tasks["EmbeddingParameters"]["ProteinChains"] for _ in range(chain_num)]
-            ] * copy_num
-
-            tasks["TaskParameters"]["DatabaseID"] = [tasks["TaskParameters"]["DatabaseID"]] * copy_num
-            tasks["TaskParameters"]["Protein"] = [
-                [tasks["TaskParameters"]["Protein"] for _ in range(chain_num)]
-            ] * copy_num
-            tasks["TaskParameters"]["State"] = [
-                [tasks["TaskParameters"]["State"] for _ in range(chain_num)]
-            ] * copy_num
-            tasks["TaskParameters"]["ChainToConstruct"] = [
-                list(tasks["TaskParameters"]["ChainToConstruct"])
-            ] * copy_num
-            tasks["TaskParameters"]["Correction"] = [
-                list(tasks["TaskParameters"]["Correction"])
-            ] * copy_num
-            tasks["TaskParameters"]["ComplexState"] = [
-                tasks["TaskParameters"]["ComplexState"]
-            ] * copy_num
-
-            keys = [
-                tasks["TaskParameters"]["DatabaseID"],
-                tasks["TaskParameters"]["Protein"],
-                tasks["TaskParameters"]["State"],
-                tasks["EmbeddingParameters"]["StructureList"],
-                tasks["TaskParameters"]["ChainToConstruct"],
-                tasks["TaskParameters"]["Correction"],
-                tasks["EmbeddingParameters"]["ProteinChains"],
-                tasks["TaskParameters"]["ComplexState"],
-                tasks["TaskParameters"]["EmbeddingToUse"]
-            ]
-        elif mode == 'BatchTable':
+        if mode.lower() == 'train':
             keys = parse_xlsx_task(tasks)
+        elif mode.lower() == 'predict':
+            hdx_filename = tasks["GeneralParameters"]["HDX_File"]
+            apo_states = tasks["apo_states"]
+            complex_states = tasks["complex_states"]
+            pdb_files = tasks['structure_list']
+            protein_chain_hhms = {item[-1]:f"{item[-2]}_{item[-1]}" for item in tasks['apo_states']}
+            protein_chains = protein_chain_hhms.keys()
+            tasks['TaskParameters']['protein_chain_hhms'] = protein_chain_hhms
+            tasks['TaskParameters']['is_complex'] = ['protein complex'] * len(pdb_files) # 1: protein complex, 0: single
+
+            if not pdb_files:
+                raise FileNotFoundError(f"No PDB files found in {tasks['GeneralParameters']['PDBDir']}")
+            else:
+                logging.info(f"Found {len(pdb_files)} PDB files: {pdb_files}")
+            # TODO: generate keys for index-retrieval peptide graph construction
         else:
             raise ValueError("Invalid mode specified in YAML file.")
 
@@ -228,7 +195,7 @@ def parse_task(input_file):
     logging.info("General settings:")
     for key, value in tasks.get("GeneralParameters", {}).items():
         logging.info(f"  {key}: {value}")
-    return keys, tasks
+    return tasks
 
 # --- Chemical Data and Feature Utilities ---
 
@@ -254,39 +221,6 @@ class ChemData:
         }
         self.one_to_three = {v: k for k, v in self.three_to_one.items()}
 
-        self.num2aa = [
-            'ALA', 'ARG', 'ASN', 'ASP', 'CYS', 'GLN', 'GLU', 'GLY', 'HIS', 'ILE',
-            'LEU', 'LYS', 'MET', 'PHE', 'PRO', 'SER', 'THR', 'TRP', 'TYR', 'VAL',
-            'UNK', 'A', 'C', 'G', 'T', 'U', 'Br', 'F', 'Cl', 'I', 'C', 'N', 'O',
-            'S', 'P', 'ZN', 'MG', 'NA', 'CA', 'K', 'FE', 'ATM'
-        ]
-        self.num2aa = [item.upper() for item in self.num2aa]
-        self.aa2num = {x: i for i, x in enumerate(self.num2aa)}
-        self.aa2num['MEN'] = 20
-
-        self.one_letter = [
-            "A", "R", "N", "D", "C", "Q", "E", "G", "H", "I",
-            "L", "K", "M", "F", "P", "S", "T", "W", "Y", "V", "?", "-"
-        ]
-        self.n_non_protein = len(self.num2aa) - len(self.one_letter)
-        self.aa_321 = {a: b for a, b in zip(self.num2aa, self.one_letter + ['a'] * self.n_non_protein)}
-
-        self.frame_priority2atom = [
-            "F", "Cl", "Br", "I", "O", "S", "Se", "Te", "N", "P", "As", "Sb",
-            "C", "Si", "Sn", "Pb", "B", "Al", "Zn", "Hg", "Cu", "Au", "Ni", "Pd",
-            "Pt", "Co", "Rh", "Ir", "Pr", "Fe", "Ru", "Os", "Mn", "Re", "Cr", "Mo",
-            "W", "V", "U", "Tb", "Y", "Be", "Mg", "Ca", "Li", "K", "ATM"
-        ]
-        self.atom_num = [
-            9, 17, 35, 53, 8, 16, 34, 52, 7, 15, 33, 51,
-            6, 14, 32, 50, 82, 5, 13, 30, 80, 29, 79, 28,
-            46, 78, 27, 45, 77, 26, 44, 76, 25, 75, 24, 42,
-            23, 74, 92, 65, 39, 4, 12, 20, 3, 19, 0
-        ]
-        self.atom2frame_priority = {x: i for i, x in enumerate(self.frame_priority2atom)}
-        self.atomnum2atomtype = dict(zip(self.atom_num, self.frame_priority2atom))
-        self.atomtype2atomnum = {v: k for k, v in self.atomnum2atomtype.items()}
-
         self.residue_charge = {
             'CYS': -0.64, 'HIS': -0.29, 'ASN': -1.22, 'GLN': -1.22, 'SER': -0.80,
             'THR': -0.80, 'TYR': -0.80, 'TRP': -0.79, 'ALA': -0.37, 'PHE': -0.37,
@@ -303,27 +237,27 @@ class ChemData:
         self.polarity_encoding = {'apolar': 0, 'polar': 1, 'neg_charged': 2, 'pos_charged': 3}
         self.ss_list = ['H', 'B', 'E', 'G', 'I', 'T', 'S', 'P', '-']
         self.AA_array = {
-            "A": [-0.591, -1.302, -0.733, 1.570, -0.146],
-            "C": [-1.343, 0.465, -0.862, -1.020, -0.255],
-            "D": [1.050, 0.302, -3.656, -0.259, -3.242],
-            "E": [1.357, -1.453, 1.477, 0.113, -0.837],
-            "F": [-1.006, -0.590, 1.891, -0.397, 0.412],
-            "G": [-0.384, 1.652, 1.330, 1.045, 2.064],
-            "H": [0.336, -0.417, -1.673, -1.474, -0.078],
-            "I": [-1.239, -0.547, 2.131, 0.393, 0.816],
-            "K": [1.831, -0.561, 0.533, -0.277, 1.648],
-            "L": [-1.019, -0.987, -1.505, 1.266, -0.912],
-            "M": [-0.663, -1.524, 2.219, -1.005, 1.212],
-            "N": [0.945, 0.828, 1.299, -0.169, 0.933],
-            "P": [0.189, 2.081, -1.628, 0.421, -1.392],
-            "Q": [0.931, -0.179, -3.005, -0.503, -1.853],
-            "R": [1.538, -0.055, 1.502, 0.440, 2.897],
-            "S": [-0.228, 1.399, -4.760, 0.670, -2.647],
-            "T": [-0.032, 0.326, 2.213, 0.908, 1.313],
-            "V": [-1.337, -0.279, -0.544, 1.242, -1.262],
-            "W": [-0.595, 0.009, 0.672, -2.128, -0.184],
-            "Y": [0.260, 0.830, 3.097, -0.838, 1.512]
-        }
+            "A": [-0.591, -1.302, -0.733,  1.570, -0.146],
+            "C": [-1.343,  0.465, -0.862, -1.020, -0.255],
+            "D": [ 1.050,  0.302, -3.656, -0.259, -3.242],
+            "E": [ 1.357, -1.453,  1.477,  0.113, -0.837],
+            "F": [-1.006, -0.590,  1.891, -0.397,  0.412],
+            "G": [-0.384,  1.652,  1.330,  1.045,  2.064],
+            "H": [ 0.336, -0.417, -1.673, -1.474, -0.078],
+            "I": [-1.239, -0.547,  2.131,  0.393,  0.816],
+            "K": [ 1.831, -0.561,  0.533, -0.277,  1.648],
+            "L": [-1.019, -0.987, -1.505,  1.266, -0.912],
+            "M": [-0.663, -1.524,  2.219, -1.005,  1.212],
+            "N": [ 0.945,  0.828,  1.299, -0.169,  0.933],
+            "P": [ 0.189,  2.081, -1.628,  0.421, -1.392],
+            "Q": [ 0.931, -0.179, -3.005, -0.503, -1.853],
+            "R": [ 1.538, -0.055,  1.502,  0.440,  2.897],
+            "S": [-0.228,  1.399, -4.760,  0.670, -2.647],
+            "T": [-0.032,  0.326,  2.213,  0.908,  1.313],
+            "V": [-1.337, -0.279, -0.544,  1.242, -1.262],
+            "W": [-0.595,  0.009,  0.672, -2.128, -0.184],
+            "Y": [ 0.260,  0.830,  3.097, -0.838,  1.512]
+        }# HDMD data adopted from Atchley et al. (2005): https://www.pnas.org/doi/epdf/10.1073/pnas.0408677102
 
 chemdata = ChemData()
 
@@ -375,6 +309,7 @@ def get_seq_polarity(seq):
     return polarity_mtx
 
 def parse_hhm(hhm_file):
+    # adapted from AI-HDX: https://github.com/Environmentalpublichealth/AI-HDX
     hhm_mtx = []
     with open(hhm_file) as f:
         for i in f:
@@ -444,6 +379,11 @@ def load_protein(hhm_file, pdb_file, chain_id):
 
     # physical-based features
     hse_dict = get_hse(model, chain_id)
+    corrected_hse_mtx = np.zeros((max_len, 3))
+    for i, res_j in enumerate(residue_data.keys()):
+        res_j = str(res_j)
+        if (chain_id, res_j) in hse_dict.keys():
+            corrected_hse_mtx[i, :] = list(hse_dict[(chain_id, res_j)])
     SASA = biotite_SASA(pdb_file, chain_id)[:max_len]
 
     # MSA-based features
@@ -463,12 +403,6 @@ def load_protein(hhm_file, pdb_file, chain_id):
         print("hhm_sequenece:", hhm_seq)
         print("dssp_sequenece:", res_seq)
         raise ValueError('Sequence mismatch between HMM and DSSP')
-
-    corrected_hse_mtx = np.zeros((max_len, 3))
-    for i, res_j in enumerate(residue_data.keys()):
-        res_j = str(res_j)
-        if (chain_id, res_j) in hse_dict.keys():
-            corrected_hse_mtx[i, :] = list(hse_dict[(chain_id, res_j)])
 
     return RawInputData(
         msa=torch.tensor(hhm_mtx, dtype=torch.float32),
@@ -616,43 +550,6 @@ pred_labels = ['Batch','Y_Pred_short','Y_Pred_middle','Y_Pred_long','Chain','Ran
 
 class Scorer:
     @staticmethod
-    def parse_config(config):
-        """
-        Parse scorer configuration from the main config dictionary.
-        
-        Args:
-            config (dict): The main configuration dictionary, loaded from YAML.
-            
-        Returns:
-            tuple: (settings_dict, apo_states, complex_states) containing all configuration
-        """
-        scorer_settings = config.get('ScorerSettings', {})
-        settings = scorer_settings.get('settings', {})
-        
-        # Parse protein states
-        apo_states = []
-        complex_states = []
-        for complex_info in scorer_settings.get('protein_complexes', []):
-            apo = complex_info.get('apo_state', {})
-            complex_ = complex_info.get('complex_state', {})
-            
-            apo_states.append((
-                apo.get('protein'),
-                apo.get('state'),
-                apo.get('correction_value'),
-                apo.get('structure_file')
-            ))
-            
-            complex_states.append((
-                complex_.get('protein'),
-                complex_.get('state'),
-                complex_.get('correction_value'),
-                complex_.get('structure_file')
-            ))
-        
-        return settings, apo_states, complex_states
-
-    @staticmethod
     def max_min_scale(data):
         return (data - np.min(data)) / (np.max(data) - np.min(data))
 
@@ -733,7 +630,7 @@ class Scorer:
         HDX_df = pd.read_excel(HDX_fpath)
 
         def get_uptake(states):
-            protein, state, correction, _ = states
+            protein, state, correction, _, _ = states
             uptake, labels, mtx = Scorer.get_weighted_uptake(HDX_df, protein, state, cluster_id, correction, timepoints)
             return dict(zip(labels, uptake)), mtx
 
@@ -754,43 +651,6 @@ class Scorer:
 
         print('Common peptides num:', len(true_diff))
         return true_diff, diff_mtx
-
-    @staticmethod
-    def parse_states_from_config(config):
-        """
-        Parse apo_states and complex_states from the main config dictionary.
-        
-        Args:
-            config (dict): The main configuration dictionary, loaded from YAML.
-            
-        Returns:
-            tuple: (apo_states, complex_states) where each is a list of tuples
-                (protein, state, correction_value, structure_file)
-        """
-        scorer_settings = config.get('ScorerSettings', {})
-        
-        apo_states = []
-        complex_states = []
-        
-        for complex_info in scorer_settings.get('protein_complexes', []):
-            apo = complex_info.get('apo_state', {})
-            complex_ = complex_info.get('complex_state', {})
-            
-            apo_states.append((
-                apo.get('protein'),
-                apo.get('state'),
-                apo.get('correction_value'),
-                apo.get('structure_file')
-            ))
-            
-            complex_states.append((
-                complex_.get('protein'),
-                complex_.get('state'),
-                complex_.get('correction_value'),
-                complex_.get('structure_file')
-            ))
-        
-        return apo_states, complex_states
 
     @staticmethod
     def parse_predictions(pred_dir, suffix=''):
@@ -824,7 +684,7 @@ class Scorer:
         truth = []
         pred = []
         pred_cluster_dict = {0: 'Y_Pred_short', 1: 'Y_Pred_middle', 2: 'Y_Pred_long'}
-        
+
         if complex_batch not in pred_df_dict:
             return None, None
 
@@ -834,8 +694,9 @@ class Scorer:
         complex_df = pred_df_dict[complex_batch]
         complex_pep_set = set(complex_df['Range'].unique())  # Convert to Set for O(1) lookup
         complex_df = complex_df.groupby('Range', as_index=False)[pred_cluster_dict[pred_cluster]].mean()
+
         for apo_state, epitope_peps, hdx_dict in zip(apo_states, hdx_epitope_peps, hdx_true_diffs):
-            apo_batch = apo_state[-1]
+            apo_batch = apo_state[-2] # structure_file
             if apo_batch not in pred_df_dict:
                 continue
 
