@@ -7,6 +7,7 @@ import logging
 from dataclasses import dataclass, field
 from collections import defaultdict
 from itertools import groupby
+from matplotlib import pyplot as plt
 
 import pandas as pd
 import numpy as np
@@ -186,8 +187,7 @@ def parse_task(input_file):
             if not pdb_files:
                 raise FileNotFoundError(f"No PDB files found in {tasks['GeneralParameters']['PDBDir']}")
             else:
-                logging.info(f"Found {len(pdb_files)} PDB files: {pdb_files}")
-            # TODO: generate keys for index-retrieval peptide graph construction
+                logging.info(f"Found {len(pdb_files)} PDB files")
         else:
             raise ValueError("Invalid mode specified in YAML file.")
 
@@ -582,7 +582,10 @@ class Scorer:
             unweighted_RFU (dict): {exposure_time: {peptide_label: RFU}}
         """
         # Filter for relevant protein and state
+        HDX_df['protein'] = HDX_df['protein'].apply(lambda x: x.strip().replace(' ', ''))
+        HDX_df['state'] = HDX_df['state'].apply(lambda x: x.strip().replace(' ', ''))
         temp = HDX_df.loc[(HDX_df['state'] == state) & (HDX_df['protein'] == protein)]
+        logging.debug(f'Processing {len(temp)} rows for protein: {protein}, state: {state}, cluster_id: {cluster_id}')
 
         if not isinstance(timepoints, (list, tuple, np.ndarray)) or len(timepoints) < 2:
             raise ValueError('timepoints must be a list/array of at least 2 elements')
@@ -628,9 +631,13 @@ class Scorer:
         """
 
         HDX_df = pd.read_excel(HDX_fpath)
-
+        HDX_df['protein'].apply(lambda x: x.strip().replace('_', ' '))
+        HDX_df['state'].apply(lambda x: x.strip().replace('_', ' '))
+        
         def get_uptake(states):
             protein, state, correction, _, _ = states
+            protein = protein.strip().replace(' ', '')
+            state = state.strip().replace(' ', '')
             uptake, labels, mtx = Scorer.get_weighted_uptake(HDX_df, protein, state, cluster_id, correction, timepoints)
             return dict(zip(labels, uptake)), mtx
 
@@ -649,7 +656,6 @@ class Scorer:
             for k in common_keys
         }
 
-        print('Common peptides num:', len(true_diff))
         return true_diff, diff_mtx
 
     @staticmethod
@@ -722,3 +728,29 @@ class Scorer:
             pred.extend(pred_diffs)
 
         return np.array(truth), np.array(pred)
+    
+    @staticmethod
+    def plot_hdx(true_diff, diff_mtx, fpath, size=(10, 6)):
+        plt.figure(figsize=size)
+        x_labels = list(true_diff.keys())
+        x_positions = np.arange(len(x_labels))  # numerical positions for x-axis
+
+        diff = np.array(list(true_diff.values()))
+        diff_neg = diff[diff<0]
+        mean_diff = np.mean(diff_neg)
+        hdx_epitope_id = np.where(diff<mean_diff)[0]
+        hdx_epitope_pep = [x_labels[i] for i in hdx_epitope_id]
+
+        plt.xticks(x_positions, x_labels, rotation=90)  # apply labels with rotation for clarity
+        all_times = set()
+        for diffs in diff_mtx.values():
+            all_times.update(diffs.keys())
+        sorted_times = sorted(all_times, key=lambda x: float(x))
+        for time in sorted_times:
+            time_values = [diff_mtx[label].get(time, 0) / 100 for label in x_labels]
+            plt.plot(x_positions, time_values, label=f'time_{time}', linestyle='--', alpha=1)
+        plt.plot(x_positions, list(true_diff.values()), label='True diff', color='k', marker='o', linestyle='-', linewidth=1, markersize=4)
+        plt.ylabel('RFU difference')
+        plt.axhline(y=mean_diff, color='r', linestyle='--', label='Epitope cutoff')
+        plt.legend()
+        plt.savefig(f"{fpath}", bbox_inches='tight', dpi=300)

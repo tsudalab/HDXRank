@@ -18,7 +18,8 @@ def run_scoring(tasks):
     """
     # Get scorer-specific settings and protein states
     apo_states, complex_states = tasks["apo_states"], tasks["complex_states"]
-    logger.info("Successfully parsed scorer configuration.")
+    wt_structures = [apo[-2] for apo in apo_states]
+    wt_structures += [complex[-2] for complex in complex_states]
     logger.debug(f"Apo states: {apo_states}")
     logger.debug(f"Complex states: {complex_states}")
 
@@ -34,18 +35,9 @@ def run_scoring(tasks):
     cluster_id = score_params.get('cluster_id', 1) # cluster_id is used to specify the time cluster index
     HDX_fpath = os.path.join(general_params['HDXDir'], f'{general_params["HDX_File"]}.xlsx')
     pred_cluster = score_params['pred_cluster']
-    timepoints = score_params['timepoints']
-    timepoints = [math.log10(tp) for tp in timepoints]  # Convert timepoints to log10 scale
+    timepoints = score_params.get('timepoints', None)
 
-    hdx_true_diffs = []
-    hdx_epitope_peps = []
-    for apo, complex_ in zip(apo_states, complex_states):
-        logger.info(f"Processing apo: {apo}, complex: {complex_}")
-        true_diff, _ = Scorer.get_true_diff(HDX_fpath, apo, complex_, cluster_id, timepoints)
-        _, epitope_pep = Scorer.get_hdx_epitopes(true_diff)
-        hdx_true_diffs.append(true_diff)
-        hdx_epitope_peps.append(epitope_pep)
-
+    # parse prediction files
     pred_suffix = score_params.get('pred_suffix', '')
     pred_dir = pred_params.get('PredDir')
     pred_df = Scorer.parse_predictions(pred_dir, suffix=pred_suffix)
@@ -54,8 +46,30 @@ def run_scoring(tasks):
         logger.error(f"No prediction files found in {pred_dir} with suffix '{pred_suffix}'. Exiting.")
         return
 
+    if timepoints is None:
+        # if timepoints are not specified, use average value from all timepoints
+        logger.info("No specific timepoints provided. Using average from all hdx values.")
+        timepoints = [0,10]
+        cluster_id = 1
+    else:
+        timepoints = [math.log10(tp) for tp in timepoints]  # Convert timepoints to log10 scale
+
+    hdx_true_diffs = []
+    hdx_epitope_peps = []
+    for apo, complex in zip(apo_states, complex_states):
+        logger.debug(f"Processing apo: {apo}, complex: {complex}")
+        true_diff, diff_mtx = Scorer.get_true_diff(HDX_fpath, apo, complex, cluster_id, timepoints)
+        _, epitope_pep = Scorer.get_hdx_epitopes(true_diff)
+        hdx_true_diffs.append(true_diff)
+        hdx_epitope_peps.append(epitope_pep)
+
+        if score_params.get("plot_hdx", False):
+            apo_structure = apo[-2]
+            fpath = os.path.join(save_dir, f'{apo_structure}_RFU_diff.png')
+            Scorer.plot_hdx(true_diff, diff_mtx, fpath)
+
     pred_df_dict = {batch: group for batch, group in pred_df.groupby('Batch')}
-    complex_batch_list = [batch for batch in pred_df_dict.keys() if 'MODEL' in batch] #FIXME: remove MODEL requirements
+    complex_batch_list = [batch for batch in pred_df_dict.keys() if batch not in wt_structures]
     logger.info(f"Found {len(complex_batch_list)} models to score.")
 
     HDX_scores = {}

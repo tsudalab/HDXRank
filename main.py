@@ -56,7 +56,7 @@ def main():
     # tasks checking
     # code here
     ##############################
-
+    tasks['structure_list'] = tasks['structure_list'][:10]
     if tasks.get("TaskParameters", {}).get("Switch", False) in [True, "True", "true", "1"]:
         # Protein Embedding
         print('\n')

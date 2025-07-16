@@ -1,0 +1,150 @@
+# ----------------------------------------------------------------------------------
+# Unified Configuration for HDXRank Pipeline
+# ----------------------------------------------------------------------------------
+# This file centralizes all settings for data processing, embedding, graph generation,
+# model prediction, and scoring.
+
+# --- General Parameters ---
+# Defines the overall mode of operation and root paths for data and outputs.
+GeneralParameters:
+  # Root directory for all relative paths defined below.
+  RootDir: "/path/to/your/project/root"
+  
+  # Name of the Excel file (without extension) used in 'BatchTable' mode.
+  # This file should be located in the RootDir.
+  TaskFile: "your_task_file" 
+  
+  # Mode of operation. Determines how tasks are generated.
+  # "Single": For a single protein structure.
+  # "BatchAF": For a batch of AlphaFold models.
+  # "BatchDock": For a batch of docking models.
+  # "BatchTable": For tasks defined in an Excel spreadsheet (TaskFile).
+  Mode: "Single"
+  
+  # Relative paths to data and output directories.
+  pepGraphDir: "data/peptide_graphs"
+  EmbeddingDir: "data/embeddings"
+  PDBDir: "data/pdb_files"
+  HDXDir: "data/hdx_data"
+  hhmDir: "data/hhm_profiles"
+
+# --- Embedding Parameters ---
+# Settings related to generating protein and molecule embeddings.
+EmbeddingParameters:
+  # Switch to enable/disable the embedding generation stage in the main pipeline.
+  Switch: "True"
+
+  # A single structure ID for "Single" mode, or a base name for batch modes.
+  # e.g., for BatchAF, if set to "MyProtein", it will look for "MyProtein_seed1_model_0", etc.
+  StructureList: "my_structure_id" 
+  
+  # List of chains that are nucleic acids (e.g., ["C", "D"]). Use null for none.
+  NAChains: null 
+  
+  # List of chains that are small molecules/ligands (e.g., ["L"]). Use null for none.
+  SMChains: null
+  
+  # Maps chain IDs to their corresponding HMM profile files.
+  # Format: "CHAIN_ID_1:file1.hhm/CHAIN_ID_2:file2.hhm"
+  hhmToUse: "A:hhm_for_chain_A.hhm/B:hhm_for_chain_B.hhm"
+  
+  # Comma-separated string of protein chain identifiers.
+  ProteinChains: "A,B"
+
+# --- Task Parameters ---
+# Defines the specifics of the task, such as protein names, states, and chains.
+TaskParameters:
+  # Switch to enable/disable the graph construction stage in the main pipeline.
+  Switch: "True"
+
+  DatabaseID: "1XYZ"
+  Protein: "MyProtein"
+  State: "unbound" # e.g., "unbound", "bound"
+  ChainToConstruct: "AB"
+  
+  # List of correction values, one for each chain in ChainToConstruct.
+  Correction: [0, 0] 
+  
+  ComplexState: "protein complex"
+  
+  # ID for the embedding to use.
+  EmbeddingToUse: "my_embedding_id" 
+  
+  # --- Batch Mode Specific Parameters ---
+  # Number of seeds used for AlphaFold predictions (for "BatchAF" mode).
+  SeedNum: 3
+  
+  # Number of docking models to process (for "BatchDock" and "BatchTable" with MODEL).
+  DockingModelNum: 10
+
+# --- Graph Parameters ---
+# Settings for constructing the graphs from embeddings.
+GraphParameters:
+  RadiusMax: 6.0
+  SeqMin: 1
+  MaxLen: 1000
+  
+  # Defines specific peptide ranges to use for graph construction.
+  # Use null to include all, or provide a list of "start-end" strings.
+  PepRange: null # e.g., ["1-100", "200-300"]
+
+# --- Prediction Parameters ---
+# Configuration for running the prediction models.
+PredictionParameters:
+  # Switch to enable/disable the prediction stage in the main pipeline.
+  Switch: "True"
+
+  CudaID: 0
+  ModelList: ["model_1.pt", "model_2.pt"]
+  BatchSize: 32
+  ModelDir: "models"
+  PredDir: "predictions"
+
+# --- Scorer Settings ---
+# Configuration for the HDXRank scorer to calculate performance metrics.
+ScorerSettings:
+  # Switch to enable/disable the scoring stage in the main pipeline.
+  Switch: "True"
+
+  settings:
+    # Directory to save the final score CSV file.
+    save_dir: "results/scores"
+
+    # Optional: Protein name for output files. Overrides TaskParameters.Protein if set.
+    protein_name: "MyProtein" 
+    
+    # Path to the HDX data file, relative to RootDir.
+    HDX_file: "data/hdx_data/my_hdx_data.xlsx"
+    
+    # Timepoints (in log scale) to define short, middle, and long exposure clusters.
+    timepoints: [1.35, 2.85]
+    
+    # Cluster index from the HDX-MS data to use for the "true" difference calculation.
+    # (0: short, 1: middle, 2: long)
+    cluster_id: 1 
+    
+    # Cluster index to use from the model's prediction files.
+    # (0: short, 1: middle, 2: long)
+    pred_cluster: 1 
+    
+    # Optional: A specific suffix to filter for prediction files in the prediction directory.
+    # e.g., "prediction_HDXRank_global"
+    pred_suffix: "" 
+
+  # List of protein complexes to score. Each item defines an apo and complex state pair.
+  protein_complexes:
+    - apo_state:
+        protein: "MyProtein"
+        state: "unbound"
+        correction_value: 0
+        structure_file: "apo_structure_id" # This ID should match an embedding.
+      complex_state:
+        protein: "MyProtein"
+        state: "bound"
+        correction_value: 0
+        structure_file: "complex_structure_id" # This ID should match an embedding.
+    # You can add more complexes to score like this:
+    # - apo_state:
+    #     ...
+    #   complex_state:
+    #     ... 

@@ -29,7 +29,7 @@ min_max_scaler = MinMaxScaler()
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 
 class atoms(object):
     _registry = {}
@@ -192,6 +192,8 @@ def read_HDX_table(HDX_df, protein_args, mode='predict'):
     res_chainsplit = {}
     protein_chains = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     timepoints = [1.35, 2.85] #predefined log_t boundaries according to k-mean clustering results
+    HDX_df['protein'].apply(lambda x: x.strip().replace(' ', ''))  # Clean protein names
+    HDX_df['state'].apply(lambda x: x.strip().replace(' ', ''))  # Clean state names
 
     for residue in res._registry:
         if residue.chain_id not in res_chainsplit.keys():
@@ -199,6 +201,8 @@ def read_HDX_table(HDX_df, protein_args, mode='predict'):
         res_chainsplit[residue.chain_id].append(residue)
     ## seperately process states
     for index, (protein, state, correction, _, chain_id) in enumerate(protein_args):
+        protein = protein.strip().replace(' ', '')
+        state = state.strip().replace(' ', '')
         temp_HDX_df = HDX_df[(HDX_df['state']==state) & (HDX_df['protein']==protein)]
         temp_HDX_df = temp_HDX_df.sort_values(by=['start', 'end'], ascending=[True, True])
         chain_index = protein_chains.index(chain_id)

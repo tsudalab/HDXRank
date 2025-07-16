@@ -1,0 +1,31 @@
+# 1UGH HDXRank YAML configuration
+
+GeneralParameters:
+  RootDir: ./dataset
+  EmbeddingDir: embedding_files
+  PDBDir: structures
+  hhmDir: hhm_files
+  HDXDir: HDX_files
+  pepGraphDir: graph_ensemble_GearNet
+  Mode: Train 
+  TaskFile: 250110_HDXRank_dataset # provide only in train mode (read xlsx file and search hdx data under HDXDir)
+
+TrainParameters:
+  SaveDir: "./models"
+  Epochs: 100
+  CudaID: 1
+  TrainValSplit: 0.2
+  BatchSize: 16
+  Seeds: [42, 43, 44, 45, 46]
+  Repeat: 5
+  ModelName: "HDXRank" 
+  InputDim: 56
+  HiddenDims: [64, 64, 64]
+
+# Modify graph construction parameters for training
+GraphParameters:
+  RadiusMax: 8.0
+  SeqMin: 3
+  GraphType: GearNet
+  EmbeddingType: manual
+  MaxLen: 30
