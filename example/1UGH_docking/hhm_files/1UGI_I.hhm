@@ -2,7 +2,7 @@ HHsearch 1.5
 NAME  1UGI_I
 FAM   
 COM   hhblits -i ./fasta_files/1UGI_I.fasta -ohhm ./fasta_files/1UGI_I.hhm -d UniRef30_2020_06 
-DATE  Sat Aug 17 17:11:33 2024
+DATE  Thu Jul  3 01:29:09 2025
 LENG  83 match states, 83 columns in multiple alignment
 
 FILT  2 out of 3 sequences passed filter (-id 90 -cov 0 -qid 0 -qsc -20 -diff 1000)
@@ -16,7 +16,10 @@ TNLSDIIEKETGKQLVIQESILMLPEEVEEVIGNKPESDILVHTAYDESTDENVMLLTSDAPEYKPWALVIQDSNGENKI
 NULL   3706	5728	4211	4064	4839	3729	4763	4308	4069	3323	5509	4640	4464	4937	4285	4423	3815	3783	6325	4665	
 HMM    A	C	D	E	F	G	H	I	K	L	M	N	P	Q	R	S	T	V	W	Y	
        M->M	M->I	M->D	I->M	I->I	D->M	D->D	Neff	Neff_I	Neff_D
-       
+       0	*	*	0	*	0	*	*	*	*	
+T 1    *	*	*	*	*	*	*	*	*	*	*	*	*	*	*	*	0	*	*	*	1
+       0	*	*	*	*	*	*	1000	0	0	
+
 N 2    *	*	*	*	*	*	*	*	*	*	*	0	*	*	*	*	*	*	*	*	2
        0	*	*	*	*	*	*	1000	0	0	
 
