@@ -29,7 +29,7 @@ min_max_scaler = MinMaxScaler()
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 class atoms(object):
     _registry = {}
@@ -81,7 +81,7 @@ class pep(object):
         self.seq_embedding = None
         self.hdx_value = hdx_value
 
-def parse_PDB(PDB_path, protein_chains=['A'], atom_type_list=['N','CA','C', 'O'], size_limit=None):
+def parse_PDB(PDB_path, protein_chains=['A'], atom_type_list=['N','CA','C', 'O'], size_limit=None, pepRange=None):
     """Parse a PDB file and return the residue information.
 
     Args:
@@ -89,6 +89,7 @@ def parse_PDB(PDB_path, protein_chains=['A'], atom_type_list=['N','CA','C', 'O']
         protein_chain (list): List of chains to be considered.
         atom_type_list (list): List of atom types to be considered.
         size_limit (dict): Dictionary of size limits for each chain.
+        pepRange (list): List of peptide ranges to be considered.
 
     Returns:
         list: A list of residue information.
@@ -110,17 +111,23 @@ def parse_PDB(PDB_path, protein_chains=['A'], atom_type_list=['N','CA','C', 'O']
         for line in f:
             if line.startswith('ATOM'):
                 n_res = int(line[22:26].strip())
-                res_type = line[17:20].strip()
                 atom_type = line[12:16].strip()
                 x = float(line[30:38].strip())
                 y = float(line[38:46].strip())
                 z = float(line[46:54].strip())
                 chain_id = line[21].strip()
                 bfactor = float(line[60:66].strip())
+                res_name = line[17:20].strip()
                 
                 if chain_id not in protein_chains:
                     logger.debug(f"Skipping chain {chain_id}")
                     continue 
+                
+                # filter out residues outside of the peptide range
+                if pepRange is not None and chain_id in pepRange.keys():
+                    if n_res < pepRange[chain_id][0] or n_res > pepRange[chain_id][1]:
+                        logger.debug(f"Skipping residue {n_res} in chain {chain_id}")
+                        continue
                 
                 chain_info = chain_data[chain_id]
                 
@@ -142,7 +149,7 @@ def parse_PDB(PDB_path, protein_chains=['A'], atom_type_list=['N','CA','C', 'O']
                         atom_count = 0
                     
                     chain_info['last_res'] = n_res
-                    chain_info['last_res_info'] = [res_type, n_res, chain_id]
+                    chain_info['last_res_info'] = [res_name, n_res, chain_id]
 
                 if atom_type.strip() in atom_type_list:
                     idx = atom_type_list.index(atom_type.strip())
@@ -177,15 +184,17 @@ def parse_PDB(PDB_path, protein_chains=['A'], atom_type_list=['N','CA','C', 'O']
 
     return nodes
 
-def read_HDX_table(HDX_df, protein_args, mode='predict'): 
+def read_HDX_table(HDX_df, protein_args, mode='single'): 
     '''parse the HDX table
     Args:
         HDX_df: pandas dataframe, HDX table
         protein_args:
             proteins: list of str, protein names
             states: list of str, state names
-            chains: list of str, protein chains
             correction: list of int, correction value for the residue index
+            hhm_prefix: str, hhm prefix
+            chainID: list of str, protein chains
+            ref_structure: str, reference structure filename
     '''
     pep._registry = [] # reset the peptide registry
     npep = 0
@@ -200,7 +209,7 @@ def read_HDX_table(HDX_df, protein_args, mode='predict'):
             res_chainsplit[residue.chain_id] = []
         res_chainsplit[residue.chain_id].append(residue)
     ## seperately process states
-    for index, (protein, state, correction, _, chain_id) in enumerate(protein_args):
+    for index, (protein, state, correction, hhm_prefix, chain_id, ref_structure) in enumerate(protein_args):
         protein = protein.strip().replace(' ', '')
         state = state.strip().replace(' ', '')
         temp_HDX_df = HDX_df[(HDX_df['state']==state) & (HDX_df['protein']==protein)]
@@ -237,7 +246,7 @@ def read_HDX_table(HDX_df, protein_args, mode='predict'):
                 if any(x == -1 for x in mean_rfu):
                     logger.debug(f"[train Mode]: mean_rfu is -1 for {protein} {state} {chain_id} {name}")
                     continue
-            elif mode == 'predict':
+            elif mode in ['batch', 'single']:
                 if all(x == -1 for x in mean_rfu):
                     logger.debug(f"[predict Mode]: mean_rfu is -1 for {protein} {state} {chain_id} {name}")
                     continue
@@ -285,7 +294,7 @@ def attach_node_attributes(G, embedding_file):
         logging.error('embedding shape does not match with the graph nodes')
         return None
 
-def ResGraph(pdb_file, protEmbed_dict, protein_chains = ['A']): 
+def ResGraph(pdb_file, protEmbed_dict, protein_chains = ['A'], pepRange=None): 
     ''' create networkx graphs
         Args:
             pdb_file: str, path to the pdb file
@@ -297,7 +306,7 @@ def ResGraph(pdb_file, protEmbed_dict, protein_chains = ['A']):
     '''
 
     size_limit = {key:value.shape[0] for key, value in protEmbed_dict.items()}
-    nodes = parse_PDB(pdb_file, protein_chains=protein_chains, size_limit=size_limit)
+    nodes = parse_PDB(pdb_file, protein_chains=protein_chains, size_limit=size_limit, pepRange=pepRange)
 
     G = nx.MultiGraph()
     G.add_nodes_from(nodes)
@@ -435,7 +444,8 @@ def networkx_to_tgG(G): # convert to torchdrug protein graph
         protein.is_complex = torch.as_tensor(G.graph['is_complex'], dtype=torch.int64)
     return protein
 
-def create_graph(pdb_fpath, embedding_dir, embedding_fname, **kwargs):
+#FIXME: embedding will be sliced according to pepRange, fit graph accordingly
+def create_graph(pdb_fpath, embedding_dir, embedding_fname, pepRange, **kwargs):
     '''
     assemble embedding files and protein structure files into a graph
     Args:
@@ -474,7 +484,7 @@ def create_graph(pdb_fpath, embedding_dir, embedding_fname, **kwargs):
     else:
         raise ValueError("Unknown embedding type:", kwargs['embedding_type'])
 
-    G = ResGraph(pdb_fpath, protEmbed_dict, protein_chains=list(protEmbed_dict.keys()))
+    G = ResGraph(pdb_fpath, protEmbed_dict, protein_chains=list(protEmbed_dict.keys()), pepRange=pepRange)
     if G is None:
         return None
     G.graph['protein_chains'] = list(protEmbed_dict.keys())
@@ -486,7 +496,7 @@ def create_graph(pdb_fpath, embedding_dir, embedding_fname, **kwargs):
     G = add_edges(G, edge_to_add, coord=coords, max_distance=kwargs['max_distance'], min_seq_sep=kwargs['min_seq_sep'])
     return G
 
-def load_pep(HDX_fpath, protein_args, max_len =30, pep_range = None):
+def load_pep(HDX_fpath, protein_args, max_len =30, pep_range = None, mode = 'single'):
     '''
     Pre-process the HDX table and load peptides into the pep.registry
 
@@ -495,10 +505,12 @@ def load_pep(HDX_fpath, protein_args, max_len =30, pep_range = None):
         protein_args:
             proteins: list of str, protein names
             states: list of str, state names
-            chains: list of str, protein chains
             correction: list of int, correction value for the residue index
+            hhm_prefix: str, hhm prefix
+            chains: list of str, protein chains
+            ref_structure: str, reference structure filename
         max_len: int, maximum length of the peptide
-        pep_range: list of tuples, each tuple contains the start and end position of the peptide. [(a,b), (c,d), ...]
+        pep_range: chain-wise peptide range
     '''
     HDX_df = pd.read_excel(HDX_fpath, sheet_name='Sheet1')
     ### -------- filter HDX table ------ ####
@@ -507,19 +519,30 @@ def load_pep(HDX_fpath, protein_args, max_len =30, pep_range = None):
     fn = lambda x: x.replace(' ', '').strip()
     protein = [fn(p[0]) for p in protein_args]
     state = [fn(p[1]) for p in protein_args]
+    corrections = [p[2] for p in protein_args]
+    chains = [p[4] for p in protein_args]
 
     # filter the HDX table
     HDX_df = HDX_df[(HDX_df['state'].isin(state)) & (HDX_df['protein'].isin(protein))]
     HDX_df = HDX_df[HDX_df['sequence'].str.len() < max_len]
     
-    if pep_range: #providing specific range (start, end) to filter the peptides
+    if pep_range:
         filtered_df = pd.DataFrame()
-        for start, end in pep_range:
-            filtered_df = pd.concat([filtered_df, HDX_df[(HDX_df['start'] >= start) & (HDX_df['end'] <= end)]])
+        for p,s,c, id in zip(protein, state, corrections, chains):
+            temp_df = HDX_df[(HDX_df['protein'] == p) & (HDX_df['state'] == s)]
+            start_id, end_id = pep_range.get(id, (None, None))
+            if start_id is None or end_id is None:
+                filtered_df = pd.concat([filtered_df, temp_df])
+                continue
+
+            start_id += c
+            end_id += c
+            temp_df = temp_df[(temp_df['start'] >= start_id) & (temp_df['end'] <= end_id)]
+            filtered_df = pd.concat([filtered_df, temp_df])
         HDX_df = filtered_df.drop_duplicates().reset_index(drop=True)
     HDX_df = HDX_df.sort_values(by=['start', 'end'], ascending=[True, True])
     
-    if not read_HDX_table(HDX_df, protein_args): # read HDX table file
+    if not read_HDX_table(HDX_df, protein_args, mode): # read HDX table file
         return None
     logging.info(f"Read in {len(pep._registry)} peptides.")
 
@@ -720,6 +743,7 @@ class pepGraph(Dataset):
             'embedding_type': tasks["GraphParameters"]["EmbeddingType"],
             'max_len': tasks["GraphParameters"]["MaxLen"],
             'pep_range': tasks["TaskParameters"]["PepRange"],
+            'mode': tasks["GeneralParameters"]["Mode"],
             **kwargs
         }
         self.complex_state_dict = {'apo':0, 'single':0, 'protein complex':1, 'ligand complex':2, 'dna complex':3, 'rna complex': 4}
@@ -755,14 +779,15 @@ class pepGraph(Dataset):
 
         # residue graph generation #
         logging.info('Creating graph...')
+        #TODO: revise create_graph for peptide range format change
         G = create_graph(pdb_fpath, self.embedding_dir, embedding_fname=pdb_fname, embedding_type = self.params['embedding_type'], 
-                        max_distance = self.params['max_distance'], min_seq_sep = self.params['min_seq_sep'])
+                        max_distance = self.params['max_distance'], min_seq_sep = self.params['min_seq_sep'], pepRange=self.params['pep_range'])
         if G is None:
             logging.error("Cannot create graph")
             return None
 
         load_pep(target_HDX_fpath, self.tasks['apo_states'], 
-                max_len = self.params['max_len'], pep_range = self.params['pep_range'])
+                max_len = self.params['max_len'], pep_range = self.params['pep_range'], mode = self.params['mode'])
 
         #plddt filter can be applied here
         #plddt_filter = None if not pdb_fname.startswith('FOLD') else 90 # only filter out low res-pLDDT regions for AlphaFold models

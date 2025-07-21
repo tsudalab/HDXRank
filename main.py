@@ -6,7 +6,7 @@ Note:
 HDXRank main function for running the pipeline.
 """
 import argparse
-from HDXRank_prot_embedding import BatchTable_embedding, run_embedding
+from HDXRank_prot_embedding import batch_embedding, single_embedding
 from HDXRank_graph_tasks import save_graphs
 from HDXRank_utils import parse_task
 from HDXRank_dataset import pepGraph
@@ -61,10 +61,10 @@ def main():
         # Protein Embedding
         print('\n')
         logging.info("Protein Embedding...")
-        if tasks['GeneralParameters']['Mode'].lower() == 'train':
-            BatchTable_embedding(tasks=tasks)
-        elif tasks['GeneralParameters']['Mode'].lower() == 'predict':
-            run_embedding(tasks=tasks)
+        if tasks['GeneralParameters']['Mode'].lower() == 'batch':
+            batch_embedding(tasks=tasks)
+        elif tasks['GeneralParameters']['Mode'].lower() == 'single':
+            single_embedding(tasks=tasks)
         else:
             raise ValueError(f"Invalid mode: {tasks['GeneralParameters']['Mode']}")
 
@@ -73,7 +73,7 @@ def main():
         logging.info("Peptide Graph Construction...")
         graph_dataset = pepGraph(
             files=tasks['structure_list'],
-            tasks=tasks,
+            tasks=tasks
         )
         save_graphs(graph_dataset, tasks["GeneralParameters"]["pepGraphDir"])
     else:

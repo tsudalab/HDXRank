@@ -69,7 +69,7 @@ def merge_inputs(inputs_list):
             running_input = running_input.merge(inputs_list[i])
         return running_input
 
-def embed_protein(structure_dir, hhm_dir, save_dir, pdb_fname, protein_chain_hhms, NA_chain=None, SM_chain=None):
+def embed_protein(structure_dir, hhm_dir, save_dir, pdb_fname, protein_chain_hhms, NA_chain=None, SM_chain=None, pepRange = None):
     """
     Embeds a single protein's sequence and structure into feature matrices.
 
@@ -98,11 +98,10 @@ def embed_protein(structure_dir, hhm_dir, save_dir, pdb_fname, protein_chain_hhm
         logger.warning(f'PDB file not found, skipping: {pdb_file}')
         return
 
-    structure = get_bio_model(pdb_file)
+    structure = get_bio_model(pdb_file, pepRange)
     chains = list(structure.get_chains())
 
     protein_inputs, NA_inputs, SM_inputs = [], [], []
-
     for chain in chains:
         chain_id = chain.get_id()
         hhm_file = os.path.join(hhm_dir, f'{protein_chain_hhms.get(chain_id)}.hhm')
@@ -110,7 +109,7 @@ def embed_protein(structure_dir, hhm_dir, save_dir, pdb_fname, protein_chain_hhm
             if not os.path.isfile(hhm_file):
                 logger.error(f'Missing HMM for chain {chain_id}: {hhm_file}')
                 continue
-            protein_inputs.append(load_protein(hhm_file, pdb_file, chain_id))
+            protein_inputs.append(load_protein(hhm_file, pdb_file, chain_id, pepRange))
         elif chain_id in NA_chain:
             NA_inputs.append(load_nucleic_acid(pdb_file, chain_id))
         elif chain_id in SM_chain:
@@ -170,7 +169,7 @@ def embed_protein(structure_dir, hhm_dir, save_dir, pdb_fname, protein_chain_hhm
     torch.save(data_to_save, save_file)
     logger.info(f"Successfully saved embedding to {save_file}")
 
-def BatchTable_embedding(tasks):
+def batch_embedding(tasks):
     """
     Generates embeddings for a batch of proteins defined in an Excel task file.
 
@@ -196,19 +195,19 @@ def BatchTable_embedding(tasks):
         file_string = str(row['structure_file']).upper().split('.')[0]
         pdb_fnames = file_string.split(':')
         protein_chain = row['protein_chain'].split(',')
-
+        # structure_dir, hhm_dir, save_dir, pdb_fname, protein_chain_hhms,
         if pdb_fnames[0] != 'MODEL':
             protein_chain_hhms = {chain: pdb_fnames[0] for chain in protein_chain}
-            embed_protein(structure_dir, hhm_dir, save_dir, pdb_fnames[0], protein_chain_hhms, NA_chain=[], SM_chain=[])
+            embed_protein(structure_dir, hhm_dir, save_dir, pdb_fnames[0], protein_chain_hhms, NA_chain=[], SM_chain=[], pepRange=tasks['TaskParameters'].get('PepRange', None))
         else:
             N_model = int(tasks['TaskParameters']['DockingModelNum'])
             protein_chain_hhms = {chain: pdb_fnames[j+1] for j, chain in enumerate(protein_chain)}
             for i in range(1, N_model+1):
-                embed_protein(structure_dir, hhm_dir, save_dir, f'MODEL_{i}_REVISED', protein_chain_hhms, NA_chain=[], SM_chain=[])
+                embed_protein(structure_dir, hhm_dir, save_dir, f'MODEL_{i}_REVISED', protein_chain_hhms, NA_chain=[], SM_chain=[], pepRange=tasks['TaskParameters'].get('PepRange', None))
 
-def run_embedding(tasks):
+def single_embedding(tasks):
     """
-    Runs the embedding process for Single, BatchAF, or BatchDock modes.
+    Runs the embedding process for single modes.
 
     Args:
         tasks (dict): The main configuration dictionary loaded from YAML.
@@ -233,7 +232,8 @@ def run_embedding(tasks):
             pdb_fname=pdb_fname,
             protein_chain_hhms=protein_chain_hhms,
             NA_chain=na_chains,
-            SM_chain=sm_chains
+            SM_chain=sm_chains,
+            pepRange=tasks['TaskParameters'].get('PepRange', None)
         )
 
 if __name__ == "__main__":
@@ -247,10 +247,10 @@ if __name__ == "__main__":
 
     tasks = parse_task(args.config)
 
-    if tasks['GeneralParameters']['Mode'].lower() == 'train':
-        BatchTable_embedding(tasks=tasks)
-    elif tasks['GeneralParameters']['Mode'].lower() == 'predict':
-        run_embedding(tasks=tasks)
+    if tasks['GeneralParameters']['Mode'].lower() in ['batch', 'train']:
+        batch_embedding(tasks=tasks)
+    elif tasks['GeneralParameters']['Mode'].lower() == 'single':
+        single_embedding(tasks=tasks)
     else:
         raise ValueError(f"undefined mode: {tasks['GeneralParameters']['Mode']}")
     logger.info("Standalone embedding script finished.")

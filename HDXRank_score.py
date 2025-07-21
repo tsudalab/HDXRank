@@ -18,8 +18,7 @@ def run_scoring(tasks):
     """
     # Get scorer-specific settings and protein states
     apo_states, complex_states = tasks["apo_states"], tasks["complex_states"]
-    wt_structures = [apo[-2] for apo in apo_states]
-    wt_structures += [complex[-2] for complex in complex_states]
+    wt_structures = [apo[-1] for apo in apo_states]
     logger.debug(f"Apo states: {apo_states}")
     logger.debug(f"Complex states: {complex_states}")
 

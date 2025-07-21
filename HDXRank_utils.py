@@ -57,18 +57,23 @@ def config_process(config_file):
 
     # Post-process PepRange for GraphParameters
     if "TaskParameters" in config:
-        pep_range = task_settings.get("PepRange")
-        if isinstance(pep_range, list):
-            input_range = []
-            for subrange in pep_range:
-                subrange = str(subrange).strip()
-                if '-' in subrange:
-                    parts = subrange.split('-')
-                    if len(parts) == 2:
-                        input_range.append((int(parts[0].strip()), int(parts[1].strip())))
-            task_settings["PepRange"] = input_range
-        elif pep_range is None or str(pep_range).lower() == 'none':
-            task_settings["PepRange"] = None
+        pep_range = task_settings.get("PepRange") # pepRange e.g. A:300-600,B:300-600,C:300-600, convert to dict {chainID: [start, end]}
+        if isinstance(pep_range, str) and ':' in pep_range:
+            pep_range_dict = {}
+            # Split by comma to get each chain's range
+            for chain_range in pep_range.split(','):
+                chain_range = chain_range.strip()
+                if ':' in chain_range:
+                    # Split into chain ID and range
+                    chain_id, range_str = chain_range.split(':')
+                    chain_id = chain_id.strip()
+                    # Split range into start and end
+                    if '-' in range_str:
+                        start, end = map(int, range_str.split('-'))
+                        pep_range_dict[chain_id] = [start, end]
+            task_settings["PepRange"] = pep_range_dict
+        elif pep_range is None:
+            task_settings["PepRange"] = {}
 
     # Parse protein states
     apo_states = []
@@ -76,21 +81,24 @@ def config_process(config_file):
     for complex_info in task_settings.get('HDX_Chains', []):
         apo = complex_info.get('apo_state', {})
         complex = complex_info.get('complex_state', {})
+        ref_structure = complex_info.get('ref_structure', None)
 
         apo_states.append((
             apo.get('protein'),
             apo.get('state'),
             apo.get('correction_value'),
-            apo.get('structure_file'),
-            apo.get('chainID')
+            apo.get('hhm_prefix'),
+            apo.get('chainID'),
+            ref_structure
         ))
 
         complex_states.append((
             complex.get('protein'),
             complex.get('state'),
             complex.get('correction_value'),
-            complex.get('structure_file'),
-            complex.get('chainID')
+            complex.get('hhm_prefix'),
+            complex.get('chainID'),
+            ref_structure
         ))
 
     if not apo_states or not complex_states:
@@ -110,7 +118,7 @@ def config_process(config_file):
 # TODO: modify parse_xlsx_task to return a list of tasks
 def parse_xlsx_task(tasks):
     """
-    Parse an Excel task file for train mode.
+    Parse an Excel task file for batch/train mode.
     """
     task_fpath = os.path.join(tasks["GeneralParameters"]["RootDir"], f"{tasks['GeneralParameters']['TaskFile']}.xlsx")
     if not os.path.exists(task_fpath):
@@ -172,14 +180,14 @@ def parse_task(input_file):
     keys = None
     if "Mode" in tasks["GeneralParameters"]:
         mode = tasks["GeneralParameters"]["Mode"]
-        if mode.lower() == 'train':
+        if mode.lower() in ['batch', 'train']:
             keys = parse_xlsx_task(tasks)
-        elif mode.lower() == 'predict':
+        elif mode.lower() == 'single':
             hdx_filename = tasks["GeneralParameters"]["HDX_File"]
             apo_states = tasks["apo_states"]
             complex_states = tasks["complex_states"]
             pdb_files = tasks['structure_list']
-            protein_chain_hhms = {item[-1]:f"{item[-2]}_{item[-1]}" for item in tasks['apo_states']}
+            protein_chain_hhms = {item[-2]:f"{item[-3]}_{item[-2]}" for item in tasks['apo_states']}
             protein_chains = protein_chain_hhms.keys()
             tasks['TaskParameters']['protein_chain_hhms'] = protein_chain_hhms
             tasks['TaskParameters']['is_complex'] = ['protein complex'] * len(pdb_files) # 1: protein complex, 0: single
@@ -308,7 +316,7 @@ def get_seq_polarity(seq):
         polarity_mtx[i, idx] = 1
     return polarity_mtx
 
-def parse_hhm(hhm_file):
+def parse_hhm(hhm_file, pepRange=None):
     # adapted from AI-HDX: https://github.com/Environmentalpublichealth/AI-HDX
     hhm_mtx = []
     with open(hhm_file) as f:
@@ -337,16 +345,17 @@ def parse_hhm(hhm_file):
 
 # --- Protein, Ligand, and Nucleic Acid Loading ---
 
-def load_protein(hhm_file, pdb_file, chain_id):
+def load_protein(hhm_file, pdb_file, chain_id, pepRange = None):
     """
     Generate embedding file from the pre-computed HMM file and rigidity file, PDB structure
     processing the protein chain featurization
     """
-    model = get_bio_model(pdb_file)
+    model = get_bio_model(pdb_file, pepRange)
     residue_data = {}
     residue_coord = []
     res_seq = []
     residue_list = Selection.unfold_entities(model, 'R')
+    logging.info(f"residue numbers:{len(residue_list)}")
     for res in residue_list:
         if res.get_parent().get_id() != chain_id:
             continue
@@ -388,18 +397,20 @@ def load_protein(hhm_file, pdb_file, chain_id):
 
     # MSA-based features
     hhm_mtx, hhm_seq = parse_hhm(hhm_file) # hhm file is chain-wise
+    logging.debug(f"hhm_mtx shape: {hhm_mtx.shape}, hhm_seq length: {len(hhm_seq)}")
+    # Align sequences and get masks, 1 if the residue is different, 0 if the residue is aligned
+    res_seq = ''.join(res_seq)
+    _, hhm_mask = max_aligned_seq(res_seq, hhm_seq)
+    hhm_mtx = hhm_mtx[~hhm_mask, :]
+    hhm_seq = "".join(hhm_seq[i] for i in range(len(hhm_seq)) if not hhm_mask[i])
+    logging.debug(f"hhm_mtx shape: {hhm_mtx.shape}, hhm_seq length: {len(hhm_seq)}")
 
     # structura based features: dihedral angels and orientations
     GVP_feats = ProteinGraphDataset(data_list=[])
     dihedrals = GVP_feats._dihedrals(torch.as_tensor(residue_coord))
     orientations = GVP_feats._orientations(torch.as_tensor(residue_coord))
 
-    res_seq = ''.join(res_seq)
-    if hhm_seq == res_seq:
-        pass
-    elif hhm_seq[:-1] == res_seq:
-        hhm_mtx = hhm_mtx[:-1]
-    else:
+    if not hhm_seq == res_seq:
         print("hhm_sequenece:", hhm_seq)
         print("dssp_sequenece:", res_seq)
         raise ValueError('Sequence mismatch between HMM and DSSP')
@@ -523,27 +534,6 @@ class Chain:
         residues = [list(group) for key, group in groupby(atoms, key)]
         return residues
 
-def read_PDB(key, PDB_path):
-    if not os.path.isfile(PDB_path):
-        print("cannot find the file", key)
-        return None
-    chains = defaultdict(Chain)
-    with open(PDB_path, 'r') as f:
-        data = f.read().strip().split('\n')
-        for line in data:
-            if line[:4] == 'ATOM':
-                n_res = int(line[23:26].strip())
-                n_atom = int(line[6:11].strip())
-                res_type = line[17:20].strip()
-                atom_type = line[12:16].strip()
-                chain_id = line[21].strip()
-                x = float(line[30:38].strip())
-                y = float(line[38:46].strip())
-                z = float(line[46:54].strip())
-                if atom_type == 'CA':
-                    chains[chain_id].add_atom(n_atom, n_res, res_type, atom_type, [x, y, z])
-    return chains
-
 # --- HDXRank Scorer  ---
 
 pred_labels = ['Batch','Y_Pred_short','Y_Pred_middle','Y_Pred_long','Chain','Range']
@@ -635,7 +625,7 @@ class Scorer:
         HDX_df['state'].apply(lambda x: x.strip().replace('_', ' '))
         
         def get_uptake(states):
-            protein, state, correction, _, _ = states
+            protein, state, correction, _, _, _ = states
             protein = protein.strip().replace(' ', '')
             state = state.strip().replace(' ', '')
             uptake, labels, mtx = Scorer.get_weighted_uptake(HDX_df, protein, state, cluster_id, correction, timepoints)
@@ -702,7 +692,7 @@ class Scorer:
         complex_df = complex_df.groupby('Range', as_index=False)[pred_cluster_dict[pred_cluster]].mean()
 
         for apo_state, epitope_peps, hdx_dict in zip(apo_states, hdx_epitope_peps, hdx_true_diffs):
-            apo_batch = apo_state[-2] # structure_file
+            apo_batch = apo_state[-1] # ref_structure
             if apo_batch not in pred_df_dict:
                 continue
 

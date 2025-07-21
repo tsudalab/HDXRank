@@ -54,23 +54,10 @@ def main():
     if not os.path.isfile(args.config):
         raise FileNotFoundError(f"Configuration file not found: {args.config}")
 
-    # FIXME:remove keys usage
-    keys, tasks = parse_task(args.config)
+    tasks = parse_task(args.config)
 
     logger.info("Initializing graph dataset...")
-    graph_dataset = pepGraph(
-        keys,
-        tasks["GeneralParameters"]["RootDir"],
-        tasks["GeneralParameters"]["EmbeddingDir"],
-        tasks["GeneralParameters"]["PDBDir"],
-        tasks["GeneralParameters"]["pepGraphDir"],
-        min_seq_sep=tasks["GraphParameters"]["SeqMin"],
-        max_distance=tasks["GraphParameters"]["RadiusMax"],
-        graph_type=tasks["GraphParameters"]["GraphType"],
-        embedding_type=tasks["GraphParameters"]["EmbeddingType"],
-        max_len=tasks["GraphParameters"]["MaxLen"],
-        pep_range=tasks["GraphParameters"]["PepRange"]
-    )
+    graph_dataset = pepGraph(files=tasks['structure_list'], tasks=tasks)
 
     save_graphs(graph_dataset, tasks["GeneralParameters"]["pepGraphDir"])
     logger.info("Standalone graph generation script finished.")
