@@ -6,12 +6,12 @@ Note:
 HDXRank main function for running the pipeline.
 """
 import argparse
-from HDXRank_prot_embedding import batch_embedding, single_embedding
-from HDXRank_graph_tasks import save_graphs
-from HDXRank_utils import parse_task
-from HDXRank_dataset import pepGraph
-from HDXRank_prediction import HDXRank_prediction
-from HDXRank_score import run_scoring
+from hdxrank.HDXRank_graph_tasks import save_graphs
+from hdxrank.HDXRank_utils import parse_task
+from hdxrank.HDXRank_dataset import pepGraph
+from hdxrank.HDXRank_prediction import HDXRank_prediction
+from hdxrank.HDXRank_prot_embedding import batch_embedding, single_embedding
+from hdxrank.HDXRank_score import run_scoring
 import logging
 
 for handler in logging.root.handlers[:]:
@@ -56,12 +56,12 @@ def main():
     # tasks checking
     # code here
     ##############################
-    tasks['structure_list'] = tasks['structure_list'][:10]
+    tasks['structure_list'] = tasks['structure_list']
     if tasks.get("TaskParameters", {}).get("Switch", False) in [True, "True", "true", "1"]:
         # Protein Embedding
         print('\n')
         logging.info("Protein Embedding...")
-        if tasks['GeneralParameters']['Mode'].lower() == 'batch':
+        if tasks['GeneralParameters']['Mode'].lower() in ['batch', 'train']:
             batch_embedding(tasks=tasks)
         elif tasks['GeneralParameters']['Mode'].lower() == 'single':
             single_embedding(tasks=tasks)
