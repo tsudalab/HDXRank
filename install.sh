@@ -29,7 +29,7 @@ pip install torchdrug
 
 # Step 5: Install scikit-learn and biotite
 echo "Installing scikit-learn, and biotite..."
-pip install scikit-learn biotite
+pip install scikit-learn biotite pyyaml
 
 # Step 6: Install additional packages with pip
 echo "Installing Biopython, Openpyxl, and pdb2sql using pip..."
