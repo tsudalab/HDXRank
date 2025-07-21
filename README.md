@@ -1,30 +1,45 @@
 # HDXRank [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15426072.svg)](https://doi.org/10.5281/zenodo.15426072)
-**HDXRank is an open-source pipeline to apply HDX-MS restraints to protein-protein complex prediction ranking.**
 
-## Method overview:
+**HDXRank is an deep learning pipeline that applies HDX-MS (Hydrogen-Deuterium Exchange Mass Spectrometry) restraints to rank protein-protein complex predictions.**
+
+## Overview
+
 <img src="figures/HDXRank_overview.jpg" style="width:100%;">
-Integrating sparse experimental data into protein complex modeling workflows can significantly improve the accuracy and reliability of predicted models. Despite the valuable insights that hydrogen-deuterium exchange (HDX) data provide about protein binding interfaces, there is currently no standard protocol for incorporating this information into the complex model selection process. Inspired by advances in graph-based deep learning for protein representation, we utilize it as a backbone for a flexible scoring framework in protein-protein complex model ranking based on their alignment with experimental HDX profiles. It offers a robust, HDX-informed selection protocol with improved prediction accuracy.
+
+HDXRank addresses the challenge of selecting accurate protein complex models by integrating experimental HDX-MS data with graph-based deep learning. The method uses HDX restraints to evaluate how well predicted complex structures align with experimental binding interface data, providing a robust framework for complex model ranking with improved prediction accuracy.
+
+## Key Features
+
+- **HDX-MS data integration** for experimental restraints
+- **Support for multiple input sources** (docking predictions, AlphaFold models)
+- **Flexible and extensible framework** for incorporating new experimental data
 
 ## Installation
-This program is designed to run in a Python environment compatible with CUDA 11.8. For reproducibility and ease of setup, we recommend using a Docker container to simulate the original environment. Alternatively, the required dependencies can be installed directly via Conda.
 
-1. Clone the repository:
+HDXRank requires Python with CUDA 11.8 support. We provide both Docker and Conda installation options.
+
+### Prerequisites
+- [Docker](https://docs.docker.com/get-docker/) (recommended) or Conda
+- CUDA 11.8 compatible GPU (for model training/prediction)
+
+### Quick Start with Docker (Recommended)
+
+1. **Clone the repository:**
 ```bash
 git clone https://github.com/SuperChrisW/HDXRank.git
 cd HDXRank
 ```
-2. (Recommended) Run with Docker container:
-Make sure [Docker](https://docs.docker.com/get-docker/) is installed and the Docker daemon is running.
+
+2. **Run with Docker:**
 ```bash
-docker pull superchrisw/hdxrank:py310_torch200_cu118
-docker run -it --rm -v $(pwd):/job/code superchrisw/hdxrank:py310_torch200_cu118 /bin/bash
+docker pull superchrisw/hdxrank:latest
+docker run -it --rm -v $(pwd):/job/code superchrisw/hdxrank:latest /bin/bash
 cd /job/code
 python main.py --help
 ```
-This should print the command-line help for the main program, confirming that all dependencies are correctly installed.
 
-3. (Optional) Run with conda environment:
-If you prefer not to use Docker:
+### Alternative: Conda Installation
+
 ```bash
 chmod +x ./install.sh
 ./install.sh
@@ -32,93 +47,116 @@ conda activate HDXRank
 python main.py --help
 ```
 
-## Preparation
-* HDXRank requires multiple sequence alignments in `.hhm` format, which are generated using HHblits. Follow the steps below to install HHblits, download the UniRef30 database, and run the alignment.
-1. Create hhblits environment
+## Required Input Files
+
+HDXRank requires three main types of input files:
+
+1. **Protein Structure Files (`.pdb`)** - Complex structure predictions to be ranked + apo structures
+2. **Multiple Sequence Alignments (`.hhm`)** - Generated using HHblits against UniRef30
+3. **HDX-MS Data (`.xlsx`)** - Experimental HDX data with specific column format
+4. **Configuration File (`.yaml`)** - Pipeline settings and parameters
+
+### Preparing MSA Files
+
+HDXRank requires `.hhm` format multiple sequence alignments generated using HHblits:
+
+#### Install HHblits
 ```bash
 conda create -n hhblits -y
-source activate hhblits
+conda activate hhblits
 conda install hhsuite -c conda-forge -c bioconda -y
 ```
-2. Download UniRef30 database
+
+#### Download UniRef30 Database
 ```bash
 mkdir -p databases
 cd databases
-wget -O UniRef30_2020_06_hhsuite.tar.gz http://wwwuser.gwdg.de/~compbiol/uniclust/2020_06/UniRef30_2020_06_hhsuite.tar.gz
+wget http://wwwuser.gwdg.de/~compbiol/uniclust/2020_06/UniRef30_2020_06_hhsuite.tar.gz
 tar -xvfz UniRef30_2020_06_hhsuite.tar.gz
 rm UniRef30_2020_06_hhsuite.tar.gz
 cd ..
 ```
-3. Run hhblits to Generate `.hhm` Files
-Use `hhblits.sh` script provided in the `HDXRank/` directory to perform multi-sequence alignment 
-```bash
-bash hhblits.sh
-```
-All `.fasta` files located in `/HDXRank/fasta_files` will be searched and the resulting `.hhm` files will be saved to `/HDXRank/hhm_files`
 
-* (Optional) To reproduce HDXRank examples or re-train model, you will need the HDX-MS dataset and example files available from Zenodo: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15426072.svg)](https://doi.org/10.5281/zenodo.15426072)
+#### Generate `.hhm` Files
 ```bash
+bash ./scripts/hhblits.sh
+```
+This processes all `.fasta` files in `/HDXRank/fasta_files/` and saves `.hhm` files to `/HDXRank/hhm_files/`
+
+### HDX-MS Data Format
+
+Your Excel file should contain the following columns:
+- `protein` - Protein identifier
+- `state` - Experimental state (apo/complex)
+- `start` - Peptide start position
+- `end` - Peptide end position
+- `sequence` - Peptide sequence
+- `log_t` - Log exchange time
+- `RFU` - Relative fractional uptake
+
+## Usage
+
+### Configuration Setup
+
+HDXRank uses YAML configuration files to define all pipeline parameters. See `configs/config.template.yaml` for a complete template.
+
+#### Key Configuration Sections:
+
+**GeneralParameters:** File paths and execution mode
+**TaskParameters:** Control protein embedding and graph construction
+**PredictionParameters:** Model prediction settings
+**ScorerParameters:** Scoring and ranking settings
+
+### Running HDXRank
+
+#### Basic Usage
+```bash
+python main.py --config path/to/config.yaml
+```
+
+### Output Files
+
+Results are saved to the specified output directory:
+- `HDX_scores.csv` - Ranked structures with HDXRank scores
+- `predictions/` - Raw RFU predictions for each structure
+- `results/scores/` - Detailed scoring analysis and plots
+
+## Example Data
+
+Download example datasets and configurations:
+
+```bash
+# HDX-MS dataset for training/validation
 wget -O dataset.zip https://zenodo.org/records/15426072/files/dataset.zip?download=1
 unzip dataset.zip
 
+# Example structures and configurations
 wget -O example.zip https://zenodo.org/records/15426072/files/example.zip?download=1
 unzip example.zip
 
 rm dataset.zip example.zip
 ```
-This will create `dataset/` and `example/` directories under the `HDXRank/` root folder.
 
-## Getting Started
-To run HDXRank, you will need the following input files:
+## Model Training
 
-1. **Protein structure file** (`.pdb`)  
-2. **MSA file** (`.hhm`)  
-3. **HDX-MS file** (`.xlsx`)  
+### Preparing Training Data
 
-Additionally, a settings file (`.xml`) is used to define the configuration and control the execution pipeline.
-### Example Usage 
-We provide ready-to-use examples for ranking docking models and AlphaFold (AF) predictions in the `example/` directory, as demonstrated in our publication.
+1. **Add new HDX-MS files** to `dataset/HDX_files/`
+2. **Update the dataset record** in `dataset/250110_HDXRank_dataset.xlsx`
+3. **Generate embeddings and graphs:**
+   ```bash
+   python main.py --config ./configs/config_retrain_HDXRank.yaml
+   ```
 
-To run HDXRank using one of the example configurations, execute:
+### Training the Model
+
 ```bash
-python main.py -input ./example/1UGH_docking/BatchTable_1UGH.xml
-```
-This will run the HDX prediction and ranking pipeline based on the specified `.xml` configuration. You may modify the XML file to suit your input files and experimental setup.
-
-### Workflow:
-
-1. **Protein embedding**: HDXRank extracts embeddings from `.pdb` and `.hhm` files.  
-2. **Protein graph construction**: Constructs a protein graph from the `.pdb` file.
-3. **Peptide graph splitting**: Splits the protein graph into peptide graphs based on the provided HDX-MS `.xlsx` file.
-
-### Execution:
-Once all required input files are prepared, you can launch the HDXRank pipeline using the following command:
-```bash
-python main.py -input [input.xml]
-```
-By default, the RFU prediction results will be saved to the `output/` directory (can be modified in `.xml` file).
-
-### Post-processing:
-After the prediction step completes, run the post-processing scripts located in the `scripts/` directory to compute HDXRank scores for docking models or AlphaFold predictions.
-
-## Merge data and Retrain the model
-HDXRank model was trained upon a curated HDX-MS dataset collected from public database PRIDE and MassIVE, up to March 2024. New HDX-MS data can be merged with the current dataset and used to re-train our model.
-
-To merge the newly collected data to dataset:
-1. **copy HDX-MS file into `dataset/HDX_files/`**: the table should contain columns `protein` `state` `start` `end` `sequence` `log_t` `RFU`.
-2. **update record file `dataset/250110_HDXRank_dataset.xlsx`**: record all `protein+state` pairs and corresponding structures.
-3. **run HDXRank to generate embedding and peptide graphs**:
-```bash
-python main.py -input ./settings/BatchTable_setting.xml
+python ./hdxrank/HDXRank_train.py --config ./configs/config_retrain_HDXRank.yaml
 ```
 
-To re-train the HDXRank model:
-```bash
-python HDXRank_train.py -input ./settings/BatchTable_setting.xml -save ./models
-```
+## Citation
 
-## Citing HDXRank
-If you utilize HDXRank in your research, please cite the following publication:
+If you use HDXRank in your research, please cite:
 
 ```bibtex
 @article{Wang2025HDXRank,
@@ -128,4 +166,10 @@ If you utilize HDXRank in your research, please cite the following publication:
   year      = {2025},
   doi       = {10.1021/acs.jctc.5c00175}
 }
+```
+
+## Support
+
+For questions, bug reports, or feature requests, please open an issue on GitHub
+
 
