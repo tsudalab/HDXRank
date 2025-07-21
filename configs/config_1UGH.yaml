@@ -1,0 +1,90 @@
+# 1UGH HDXRank YAML configuration
+
+GeneralParameters:
+  RootDir: ./example/1UGH_docking
+  EmbeddingDir: embedding_files
+  PDBDir: structures
+  hhmDir: hhm_files
+  HDXDir: HDX_files
+  pepGraphDir: graph_ensemble_GearNet
+  Mode: single 
+  TaskFile: null
+  HDX_File: BioChem_UNGUGI
+
+# Construct peptide graphs
+TaskParameters: 
+  Switch: True
+  PepRange: null
+  HDX_Chains:
+    - Entity: 1AKZ_1UGH
+      apo_state:
+        protein: hUNG
+        state: apo
+        chainID: E
+        correction_value: -9
+        hhm_prefix: 1AKZ
+      complex_state:
+        protein: hUNG-UGI
+        state: complex
+        chainID: E
+        correction_value: -9
+        hhm_prefix: 1UGH
+      ref_structure: 1AKZ
+
+    - Entity: 1UGI_1UGH
+      apo_state:
+        protein: UGI
+        state: apo
+        chainID: I
+        correction_value: 0
+        hhm_prefix: 1UGI
+      complex_state:
+        protein: UGI-hUNG
+        state: complex
+        chainID: I
+        correction_value: 0
+        hhm_prefix: 1UGH
+      ref_structure: 1UGI
+
+# Predict RFU for peptide graphs
+PredictionParameters:
+  Switch: True
+  ModelDir: ../../models
+  PredDir: predictions
+  ModelList:
+    - HDXRank_GN56_v0
+    - HDXRank_GN56_v1
+    - HDXRank_GN56_v2
+    - HDXRank_GN56_v3
+    - HDXRank_GN56_v4
+  CudaID: 1
+  BatchSize: 64
+
+# Calculate HDXRank scores
+ScorerParameters:
+  Switch: True
+  save_dir: "results/scores"
+  protein_name: "1UGH"
+  pred_cluster: 2
+  timepoints: [1000, 1001]
+  plot_hdx: True
+  
+TrainParameters:
+  SaveDir: "./models"
+  Epochs: 100
+  CudaID: 1
+  TrainValSplit: 0.2
+  BatchSize: 16
+  Seeds: [42, 43, 44, 45, 46]
+  Repeat: 5
+  ModelName: "HDXRank" 
+  InputDim: 56
+  HiddenDims: [64, 64, 64]
+
+# Modify graph construction parameters for training
+GraphParameters:
+  RadiusMax: 8.0
+  SeqMin: 3
+  GraphType: GearNet
+  EmbeddingType: manual
+  MaxLen: 30

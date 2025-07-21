@@ -1,0 +1,106 @@
+# 1UGH HDXRank YAML configuration
+
+GeneralParameters:
+  RootDir: ./example/8A0E_docking
+  EmbeddingDir: embedding_files
+  PDBDir: structures
+  hhmDir: hhm_files
+  HDXDir: HDX_files
+  pepGraphDir: graph_ensemble_GearNet
+  Mode: single
+  TaskFile: null
+  HDX_File: PXD040460
+
+# Construct peptide graphs
+TaskParameters: 
+  Switch: True
+  PepRange: null
+  HDX_Chains:
+    - Entity: 8A0E_E
+      apo_state:
+        protein: eIF5A
+        state: eIF5A
+        chainID: E
+        correction_value: 0
+        hhm_prefix: 8A0E_E
+      complex_state:
+        protein: eIF5A
+        state: eIF5A/DHSK329A
+        chainID: E
+        correction_value: 0
+        hhm_prefix: 8A0E_E
+      ref_structure: 8A0E_E
+
+    - Entity: 8A0E_ABCD
+      apo_state:
+        protein: DHSK329A
+        state: DHSK329A
+        chainID: A
+        correction_value: 0
+        hhm_prefix: 8A0E_ABCD
+      complex_state:
+        protein: DHSK329A
+        state: eIF5A/DHSK329A
+        chainID: A
+        correction_value: 0
+        hhm_prefix: 8A0E_ABCD
+      ref_structure: 8A0E_ABCD
+
+    - Entity: 8A0E_ABCD
+      apo_state:
+        protein: DHSK329A
+        state: DHSK329A
+        chainID: B
+        correction_value: 0
+        hhm_prefix: 8A0E_ABCD
+      complex_state:
+        protein: DHSK329A
+        state: eIF5A/DHSK329A
+        chainID: B
+        correction_value: 0
+        hhm_prefix: 8A0E_ABCD
+      ref_structure: 8A0E_ABCD
+  # add more chains if needed...
+
+# Predict RFU for peptide graphs
+PredictionParameters:
+  Switch: True
+  ModelDir: ../../models
+  PredDir: predictions
+  ModelList:
+    - HDXRank_GN56_v0
+    - HDXRank_GN56_v1
+    - HDXRank_GN56_v2
+    - HDXRank_GN56_v3
+    - HDXRank_GN56_v4
+  CudaID: 1
+  BatchSize: 64
+
+# Calculate HDXRank scores
+ScorerParameters:
+  Switch: True
+  save_dir: "results/scores"
+  protein_name: "8A0E"
+  pred_cluster: 1
+  timepoints: null
+  plot_hdx: True
+  
+TrainParameters:
+  SaveDir: "./models"
+  Epochs: 100
+  CudaID: 1
+  TrainValSplit: 0.2
+  BatchSize: 16
+  Seeds: [42, 43, 44, 45, 46]
+  Repeat: 5
+  ModelName: "HDXRank" 
+  InputDim: 56
+  HiddenDims: [64, 64, 64]
+
+# Modify graph construction parameters for training
+GraphParameters:
+  RadiusMax: 8.0
+  SeqMin: 3
+  GraphType: GearNet
+  EmbeddingType: manual
+  MaxLen: 30

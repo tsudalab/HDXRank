@@ -1,0 +1,106 @@
+# 1UGH HDXRank YAML configuration
+
+GeneralParameters:
+  RootDir: ./example/AF_Cov19_icoHu23
+  EmbeddingDir: embedding_files
+  PDBDir: structures
+  hhmDir: hhm_files
+  HDXDir: HDX_files
+  pepGraphDir: graph_ensemble_GearNet
+  Mode: single 
+  TaskFile: null
+  HDX_File: Wuhan_icoHu23
+
+# Construct peptide graphs
+TaskParameters: 
+  Switch: True
+  PepRange: A:300-600,B:300-600,C:300-600
+  HDX_Chains:
+    - Entity: Wuhan_cov19
+      apo_state:
+        protein: Wuhan_cov19
+        state: apo
+        chainID: A
+        correction_value: 0
+        hhm_prefix: WUHAN_ICOHU23
+      complex_state:
+        protein: Wuhan_cov19
+        state: complex
+        chainID: A
+        correction_value: 0
+        hhm_prefix: WUHAN_ICOHU23
+      ref_structure: icohu23_ABC
+
+    - Entity: Wuhan_cov19
+      apo_state:
+        protein: Wuhan_cov19
+        state: apo
+        chainID: B
+        correction_value: 0
+        hhm_prefix: WUHAN_ICOHU23
+      complex_state:
+        protein: Wuhan_cov19
+        state: complex
+        chainID: B
+        correction_value: 0
+        hhm_prefix: WUHAN_ICOHU23
+      ref_structure: icohu23_ABC
+    
+    - Entity: Wuhan_cov19
+      apo_state:
+        protein: Wuhan_cov19
+        state: apo
+        chainID: C
+        correction_value: 0
+        hhm_prefix: WUHAN_ICOHU23
+      complex_state:
+        protein: Wuhan_cov19
+        state: complex
+        chainID: C
+        correction_value: 0
+        hhm_prefix: WUHAN_ICOHU23
+      ref_structure: icohu23_ABC
+    # we only have the HDX data for Cov19 spike protein
+
+# Predict RFU for peptide graphs
+PredictionParameters:
+  Switch: True
+  ModelDir: ../../models
+  PredDir: predictions
+  ModelList:
+    - HDXRank_GN56_v0
+    - HDXRank_GN56_v1
+    - HDXRank_GN56_v2
+    - HDXRank_GN56_v3
+    - HDXRank_GN56_v4
+  CudaID: 1
+  BatchSize: 64
+
+# Calculate HDXRank scores
+ScorerParameters:
+  Switch: True
+  save_dir: "results"
+  protein_name: "AF_Cov19_icoHu23"
+  pred_cluster: 1
+  timepoints: null
+  plot_hdx: True
+  
+TrainParameters:
+  SaveDir: "./models"
+  Epochs: 100
+  CudaID: 1
+  TrainValSplit: 0.2
+  BatchSize: 16
+  Seeds: [42, 43, 44, 45, 46]
+  Repeat: 5
+  ModelName: "HDXRank" 
+  InputDim: 56
+  HiddenDims: [64, 64, 64]
+
+# Modify graph construction parameters for training
+GraphParameters:
+  RadiusMax: 8.0
+  SeqMin: 3
+  GraphType: GearNet
+  EmbeddingType: manual
+  MaxLen: 30

@@ -1,0 +1,91 @@
+# 1UGH HDXRank YAML configuration
+
+GeneralParameters:
+  RootDir: ./example/6DJL_docking
+  EmbeddingDir: embedding_files
+  PDBDir: structures
+  hhmDir: hhm_files
+  HDXDir: HDX_files
+  pepGraphDir: graph_ensemble_GearNet
+  Mode: single
+  TaskFile: null
+  HDX_File: PXD010586
+
+# Construct peptide graphs
+TaskParameters: 
+  Switch: True
+  PepRange: null
+  HDX_Chains:
+    - Entity: 6DJL_A
+      apo_state:
+        protein: "Ras-related protein Rab-11A"
+        state: "Rab11- Rab11a (Q70L) 1-216"
+        chainID: A
+        correction_value: 0
+        hhm_prefix: 1OIX
+      complex_state:
+        protein: "Ras-related protein Rab-11A"
+        state: "Rab11: Rab11a (Q70L) 1-216+SH3BP5: 31-455"
+        chainID: A
+        correction_value: 0
+        hhm_prefix: 6DJL
+      ref_structure: 1OIX
+
+    - Entity: 6DJL_C
+      apo_state:
+        protein: "SH3 domain-binding protein 5"
+        state: "SH3BP5- 31-455"
+        chainID: C
+        correction_value: 0
+        hhm_prefix: 6IXE
+      complex_state:
+        protein: "SH3 domain-binding protein 5"
+        state: "SH3BP5: 31-455+Rab"
+        chainID: C
+        correction_value: 0
+        hhm_prefix: 6DJL
+      ref_structure: 6IXE
+  # add more chains if needed...
+
+# Predict RFU for peptide graphs
+PredictionParameters:
+  Switch: True
+  ModelDir: ../../models
+  PredDir: predictions
+  ModelList:
+    - HDXRank_GN56_v0
+    - HDXRank_GN56_v1
+    - HDXRank_GN56_v2
+    - HDXRank_GN56_v3
+    - HDXRank_GN56_v4
+  CudaID: 1
+  BatchSize: 64
+
+# Calculate HDXRank scores
+ScorerParameters:
+  Switch: True
+  save_dir: "results/scores"
+  protein_name: "6DJL"
+  pred_cluster: 1
+  timepoints: null 
+  plot_hdx: True 
+  
+TrainParameters:
+  SaveDir: "./models"
+  Epochs: 100
+  CudaID: 1
+  TrainValSplit: 0.2
+  BatchSize: 16
+  Seeds: [42, 43, 44, 45, 46]
+  Repeat: 5
+  ModelName: "HDXRank" 
+  InputDim: 56
+  HiddenDims: [64, 64, 64]
+
+# Modify graph construction parameters for training
+GraphParameters:
+  RadiusMax: 8.0
+  SeqMin: 3
+  GraphType: GearNet
+  EmbeddingType: manual
+  MaxLen: 30

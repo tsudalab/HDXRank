@@ -1,0 +1,98 @@
+# ----------------------------------------------------------------------------------
+# Unified Configuration for HDXRank Pipeline
+# ----------------------------------------------------------------------------------
+# This file centralizes all settings for data processing, embedding, graph generation,
+# model prediction, and scoring.
+
+GeneralParameters:
+  RootDir: ./example/1UGH_docking
+  EmbeddingDir: embedding_files
+  PDBDir: structures
+  hhmDir: hhm_files
+  HDXDir: HDX_files
+  pepGraphDir: graph_ensemble_GearNet
+  Mode: single # options: single, batch, train [train mode differs in HDX data processing]
+  TaskFile: null # provide in batch and train mode (read xlsx file and search hdx data under HDXDir)
+  HDX_File: BioChem_UNGUGI
+
+# Construct peptide graphs
+TaskParameters: 
+  Switch: True
+  PepRange: null # residues should be kept for each chain, use residue index in PDB/hhm file, e.g. A:300-600,B:300-600,C:300-600
+  HDX_Chains:
+  # protein, state : used for extracting HDX data from the HDX file
+  # correction_value: used for match PDB file index with HDX file index, HDX residue index + correction = PDB residue index
+  # structure_file: guide hhm file search (e.g. 1AKZ_E.hhm) and graph construction (e.g. 1AKZ.pdb)
+    - Entity: 1AKZ_1UGH
+      apo_state:
+        protein: hUNG
+        state: apo
+        chainID: E
+        correction_value: -9
+        hhm_prefix: 1AKZ
+      complex_state:
+        protein: hUNG-UGI
+        state: complex
+        chainID: E
+        correction_value: -9
+        hhm_prefix: 1UGH
+      ref_structure: 1AKZ
+
+    - Entity: 1UGI_1UGH
+      apo_state:
+        protein: UGI
+        state: apo
+        chainID: I
+        correction_value: 0
+        hhm_prefix: 1UGI
+      complex_state:
+        protein: UGI-hUNG
+        state: complex
+        chainID: I
+        correction_value: 0
+        hhm_prefix: 1UGH
+      ref_structure: 1UGI
+  # add more chains if needed...
+
+# Predict RFU for peptide graphs
+PredictionParameters:
+  Switch: True
+  ModelDir: ../../models/prev_models+hse
+  PredDir: predictions
+  ModelList:
+    - HDXRank_GN56_v0
+    - HDXRank_GN56_v1
+    - HDXRank_GN56_v2
+    - HDXRank_GN56_v3
+    - HDXRank_GN56_v4
+  CudaID: 1
+  BatchSize: 64
+
+# Calculate HDXRank scores
+ScorerParameters:
+  Switch: True
+  save_dir: "results/scores"
+  protein_name: "1UGH"
+  pred_cluster: 1 # specify the cluster of predictions to use for scoring, [0/1/2]
+  timepoints: null # specify time range (in seconds, e.g. [10, 100]) of hdx data used to calcualte scores
+  plot_hdx: True # plot time series of HDX RFU data in save_dir
+  
+TrainParameters:
+  SaveDir: "./models"
+  Epochs: 100
+  CudaID: 1
+  TrainValSplit: 0.2
+  BatchSize: 16
+  Seeds: [42, 43, 44, 45, 46]
+  Repeat: 5
+  ModelName: "HDXRank" 
+  InputDim: 56
+  HiddenDims: [64, 64, 64]
+
+# Modify graph construction parameters for training
+GraphParameters:
+  RadiusMax: 8.0 # Maximum distance for building radius edges in peptide graphs
+  SeqMin: 3 # Minimum sequential distance for building radius edges in peptide graphs
+  GraphType: GearNet
+  EmbeddingType: manual
+  MaxLen: 30 # Filter out peptides longer than this length
