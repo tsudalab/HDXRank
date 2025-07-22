@@ -49,7 +49,7 @@ python main.py --help
 
 ## Required Input Files
 
-HDXRank requires three main types of input files:
+HDXRank requires four main types of input files:
 
 1. **Protein Structure Files (`.pdb`)** - Complex structure predictions to be ranked + apo structures
 2. **Multiple Sequence Alignments (`.hhm`)** - Generated using HHblits against UniRef30
@@ -102,10 +102,14 @@ HDXRank uses YAML configuration files to define all pipeline parameters. See `co
 
 #### Key Configuration Sections:
 
-**GeneralParameters:** File paths and execution mode
-**TaskParameters:** Control protein embedding and graph construction
-**PredictionParameters:** Model prediction settings
-**ScorerParameters:** Scoring and ranking settings
+**GeneralParameters:** File paths and execution mode 
+
+**TaskParameters:** Control protein embedding and graph construction 
+
+**PredictionParameters:** Model prediction settings 
+
+**ScorerParameters:** Scoring and ranking settings 
+
 
 ### Running HDXRank
 
