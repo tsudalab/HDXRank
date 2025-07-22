@@ -164,10 +164,13 @@ If you use HDXRank in your research, please cite:
 
 ```bibtex
 @article{Wang2025HDXRank,
-  author    = {Liyao Wang, Andrejs Tucš, Songting Ding, Koji Tsuda and Adnan Sljoka},
+  author    = {Liyao Wang and Andrejs Tucš and Songting Ding and Koji Tsuda and Adnan Sljoka},
   title     = {HDXRank: A Deep Learning Framework for Ranking Protein Complex Predictions With Hydrogen–Deuterium Exchange Data},
   journal   = {Journal of Chemical Theory and Computation},
   year      = {2025},
+  volume    = {21},
+  number    = {14},
+  pages     = {7173--7187},
   doi       = {10.1021/acs.jctc.5c00175}
 }
 ```
