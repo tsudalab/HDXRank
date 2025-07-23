@@ -140,6 +140,7 @@ unzip example.zip
 
 rm dataset.zip example.zip
 ```
+Users can repeat rigid docking by using HDock program in `prog.tar.gz`.
 
 ## Model Training
 
